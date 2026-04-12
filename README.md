@@ -6,8 +6,11 @@ AD admins, SREs, and infrastructure engineers.
 ## Categories
 
 | Folder | What's inside |
-|--------|--------------|
-| active-directory/ | AD health, lockout detection, group policy |
+|--------|---------------|
+| active-directory/ | Get-InsecureLDAPBinds — detects Event ID 2889 across all DCs |
+|                   | Get-ADForestHealth — forest-wide DC health report with HTML output |
+|                   | Get-AccountLockoutReport — lockout detection with HTML and CSV output |
+|                   | AD-PowerShell-Cheatsheet — quick reference for AD admins and service desk |
 | automation/ | Automation pipelines and scheduled task scripts |
 | service-desk/ | Tools for service desk and helpdesk engineers |
 | homelab/ | Proxmox, KVM, and homelab automation |
