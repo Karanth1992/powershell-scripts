@@ -32,90 +32,165 @@
 .NOTES
     Author:   K Shankar R Karanth
     Website:  https://karanth.ovh
-    Version:  1.0
+    Version:  1.1
     Requires: ActiveDirectory module, GroupPolicy module,
               read access to AD and GPO objects,
               run as Domain Admin or equivalent
 #>
+<#
+.SYNOPSIS
+    Generates a full GPO inventory for an Active Directory domain
+    and exports it as a styled HTML report.
+
+.EXAMPLE
+    .\Get-GPOInventory.ps1 -DomainName "karanth.lab"
+
+.EXAMPLE
+    .\Get-GPOInventory.ps1 -DomainName "karanth.lab" -OutputPath "D:\Reports\GPOInventory.html"
+#>
 
 param (
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$DomainName,
 
     [string]$OutputPath = "C:\temp\GPOInventory.html"
 )
 
-Import-Module ActiveDirectory
-Import-Module GroupPolicy
+Import-Module ActiveDirectory -ErrorAction Stop
+Import-Module GroupPolicy -ErrorAction Stop
 
-# ============ FUNCTIONS ============
+function Get-GuidFromGpLink {
+    param(
+        [string]$GpLink
+    )
+
+    if ([string]::IsNullOrWhiteSpace($GpLink)) {
+        return @()
+    }
+
+    [regex]::Matches($GpLink, '\{[0-9A-Fa-f-]{36}\}') |
+        ForEach-Object { $_.Value.Trim('{}').ToLower() }
+}
 
 function Get-GPOInventory {
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$DomainName
     )
 
-    $pdc       = (Get-ADDomainController -Discover -Service PrimaryDC -DomainName $DomainName).HostName
-    $adDomain  = Get-ADDomain -Identity $DomainName
-    $rootGPOs  = $adDomain.LinkedGroupPolicyObjects |
-                    ForEach-Object { [regex]::Match($_, '\{.*?\}').Value.Trim('{}') }
+    $adDomain = Get-ADDomain -Identity $DomainName -ErrorAction Stop
+    $pdc      = [string]$adDomain.PDCEmulator
 
-    $allGPOs   = Get-GPO -All -Domain $DomainName -Server $pdc
+    Write-Host "Using domain controller: $pdc" -ForegroundColor Yellow
 
-    # Pre-build link map — one AD query instead of one per GPO
-    $linkedGPOs = foreach ($gpo in $allGPOs) {
-        $links = Get-ADOrganizationalUnit `
-                    -Filter "gpLink -like '*$($gpo.Id.ToString('B'))*'" `
-                    -Server $pdc |
-                    Select-Object -ExpandProperty DistinguishedName
-        [PSCustomObject]@{
-            DisplayName = $gpo.DisplayName
-            Links       = $links
+    $allGPOs = Get-GPO -All -Domain $DomainName -Server $pdc -ErrorAction Stop
+
+    Write-Host "Found $($allGPOs.Count) GPO(s)." -ForegroundColor Yellow
+
+    $linkMap = @{}
+
+    foreach ($gpo in $allGPOs) {
+        $linkMap[$gpo.Id.Guid.ToString().ToLower()] = New-Object System.Collections.Generic.List[string]
+    }
+
+    Write-Host "Reading domain root GPO links..." -ForegroundColor Yellow
+
+    $domainObject = Get-ADObject `
+        -Identity $adDomain.DistinguishedName `
+        -Server $pdc `
+        -Properties gPLink `
+        -ErrorAction Stop
+
+    foreach ($guid in Get-GuidFromGpLink -GpLink $domainObject.gPLink) {
+        if ($linkMap.ContainsKey($guid)) {
+            $linkMap[$guid].Add($adDomain.DistinguishedName)
         }
     }
+
+    Write-Host "Reading OU GPO links..." -ForegroundColor Yellow
+
+    $linkedOUs = Get-ADOrganizationalUnit `
+        -LDAPFilter "(gPLink=*)" `
+        -Server $pdc `
+        -Properties gPLink `
+        -ErrorAction Stop
+
+    foreach ($ou in $linkedOUs) {
+        foreach ($guid in Get-GuidFromGpLink -GpLink $ou.gPLink) {
+            if ($linkMap.ContainsKey($guid)) {
+                $linkMap[$guid].Add($ou.DistinguishedName)
+            }
+        }
+    }
+
+    Write-Host "Reading WMI filters..." -ForegroundColor Yellow
+
+    $wmiFilters = Get-ADObject `
+        -LDAPFilter "(objectClass=msWMI-Som)" `
+        -Server $pdc `
+        -Properties msWMI-Name, msWMI-Parm2 `
+        -ErrorAction SilentlyContinue
 
     $results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
     foreach ($gpo in $allGPOs) {
-        $permissions = Get-GPPermission -Name $gpo.DisplayName -All `
-                            -DomainName $DomainName -Server $pdc |
-                        Select-Object `
-                            @{ l='Permission'; e={ "$($_.Trustee.Name), $($_.Trustee.SIDType), $($_.Permission), Denied: $($_.Denied)" } },
-                            @{ l='GPOApply';   e={ if ($_.Permission -eq 'GpoApply') { $_.Trustee.Name } } }
+        Write-Host "Processing: $($gpo.DisplayName)" -ForegroundColor Gray
 
-        $links = ($linkedGPOs | Where-Object { $_.DisplayName -eq $gpo.DisplayName }).Links
+        $permissions = Get-GPPermission `
+            -Guid $gpo.Id `
+            -All `
+            -DomainName $DomainName `
+            -Server $pdc `
+            -ErrorAction SilentlyContinue |
+            Select-Object `
+                @{ Name = 'Permission'; Expression = {
+                    "$($_.Trustee.Name), $($_.Trustee.SIDType), $($_.Permission), Denied: $($_.Denied)"
+                }},
+                @{ Name = 'GPOApply'; Expression = {
+                    if ($_.Permission -eq 'GpoApply') { $_.Trustee.Name }
+                }}
 
-        if ($gpo.ID.ToString() -in $rootGPOs) {
-            $links += $adDomain.DistinguishedName
+        $gpoGuid = $gpo.Id.Guid.ToString().ToLower()
+
+        if ($linkMap.ContainsKey($gpoGuid)) {
+            $links = $linkMap[$gpoGuid] | Sort-Object -Unique
+        }
+        else {
+            $links = @()
         }
 
-        # Reset WMI values each iteration to avoid bleed-through
         $wmiFilterName = $null
         $wmiQuery      = $null
 
-        if ($gpo.WmiFilter.Path) {
+        if ($gpo.WmiFilter) {
+            $wmiFilterName = $gpo.WmiFilter.Name
+
             try {
-                $wmiFilterId   = ($gpo.WmiFilter.Path -split '"')[1]
-                $wmiFilterName = $gpo.WmiFilter.Name
-                $wmiQuery      = ((Get-ADObject `
-                                    -Filter { objectClass -eq 'msWMI-Som' } `
-                                    -Server $pdc `
-                                    -Properties 'msWMI-Parm2' |
-                                  Where-Object { $_.Name -eq $wmiFilterId }).'msWMI-Parm2' `
-                                    -split 'root\\CIMv2;')[1]
+                $wmiFilterId = ($gpo.WmiFilter.Path -split '"')[1]
+
+                $matchedWmiFilter = $wmiFilters |
+                    Where-Object {
+                        $_.Name -eq $wmiFilterId -or
+                        $_.'msWMI-Name' -eq $wmiFilterName
+                    } |
+                    Select-Object -First 1
+
+                if ($matchedWmiFilter.'msWMI-Parm2') {
+                    $wmiQuery = ($matchedWmiFilter.'msWMI-Parm2' -split 'root\\CIMv2;')[-1]
+                }
             }
             catch {
-                Write-Warning "Could not retrieve WMI filter for GPO '$($gpo.DisplayName)': $_"
+                $wmiQuery = "Could not read WMI query"
             }
         }
 
         $results.Add([PSCustomObject]@{
             Domain           = $DomainName
             GPOName          = $gpo.DisplayName
+            GPOId            = $gpo.Id
             CreationTime     = $gpo.CreationTime
             ModificationTime = $gpo.ModificationTime
-            Links            = $links -join "`n"
+            Links            = if ($links.Count -gt 0) { $links -join "`n" } else { "Not linked" }
             ComputerSettings = $gpo.Computer.Enabled
             UserSettings     = $gpo.User.Enabled
             GPOApply         = ($permissions.GPOApply | Where-Object { $_ }) -join "`n"
@@ -128,8 +203,6 @@ function Get-GPOInventory {
     return $results
 }
 
-# ============ HTML STYLING ============
-
 $htmlHead = @'
 <title>GPO Inventory Report</title>
 <style>
@@ -138,11 +211,9 @@ h1    { color:#2a394f; border-bottom:2px solid #c9d6e3; padding-bottom:8px; }
 h3    { color:#555; font-weight:normal; }
 table { border-collapse:collapse; width:100%; background:#fff; margin-top:16px; }
 th    { background:#2a394f; color:#fff; padding:10px; text-align:left; font-size:12px; }
-td    { border:1px solid #e1e5ee; padding:8px; vertical-align:top; font-size:12px; }
+td    { border:1px solid #e1e5ee; padding:8px; vertical-align:top; font-size:12px; white-space:pre-line; }
 tr:nth-child(even) td { background:#f8f8fc; }
 tr:hover td { background:#eaf0fa; }
-.true  { color:#2d7a2d; font-weight:500; }
-.false { color:#c0392b; font-weight:500; }
 </style>
 '@
 
@@ -151,20 +222,20 @@ $htmlBody = @"
 <h3>Domain: $DomainName &nbsp;|&nbsp; Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm')</h3>
 "@
 
-# ============ RUN AND EXPORT ============
-
 Write-Host "Collecting GPO inventory for $DomainName..." -ForegroundColor Cyan
 
 $inventory = Get-GPOInventory -DomainName $DomainName
 
-if (-not (Test-Path (Split-Path $OutputPath))) {
-    New-Item -ItemType Directory -Path (Split-Path $OutputPath) -Force | Out-Null
+$outputFolder = Split-Path $OutputPath
+
+if (-not (Test-Path $outputFolder)) {
+    New-Item -ItemType Directory -Path $outputFolder -Force | Out-Null
 }
 
 $inventory |
     Sort-Object GPOName |
     ConvertTo-Html `
-        -Property Domain, GPOName, CreationTime, ModificationTime,
+        -Property Domain, GPOName, GPOId, CreationTime, ModificationTime,
                   Links, ComputerSettings, UserSettings,
                   GPOApply, Permissions, WmiFilter, WmiQuery `
         -Head $htmlHead `
