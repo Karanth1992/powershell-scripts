@@ -11,9 +11,6 @@ AD admins, SREs, and infrastructure engineers.
 |                   | Get-ADForestHealth — forest-wide DC health report with HTML output |
 |                   | Get-AccountLockoutReport — lockout detection with HTML and CSV output |
 |                   | AD-PowerShell-Cheatsheet — quick reference for AD admins and service desk |
-| automation/ | Automation pipelines and scheduled task scripts |
-| service-desk/ | Tools for service desk and helpdesk engineers |
-| homelab/ | Proxmox, KVM, and homelab automation |
 
 ## Usage
 Clone the repo and run scripts directly:
