@@ -100,7 +100,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$script:ScriptVersion = '1.6'
+$script:ScriptVersion = '1.5'
 $script:Findings = New-Object System.Collections.ArrayList
 $script:CollectionWarnings = New-Object System.Collections.ArrayList
 $script:QueryServer = $null
@@ -337,6 +337,47 @@ function ConvertTo-SafeInt64 {
     }
 }
 
+function Get-ObjectCount {
+    param(
+        [AllowNull()]
+        [object]$Value
+    )
+
+    if ($null -eq $Value) {
+        return 0
+    }
+
+    if ($Value -is [string]) {
+        return 1
+    }
+
+    if ($Value -is [System.Collections.ICollection]) {
+        try {
+            return $Value.Count
+        }
+        catch {
+            return 0
+        }
+    }
+
+    if ($Value -is [System.Collections.IEnumerable]) {
+        $count = 0
+
+        try {
+            foreach ($item in $Value) {
+                $count++
+            }
+
+            return $count
+        }
+        catch {
+            return 1
+        }
+    }
+
+    return 1
+}
+
 function Join-SafeValues {
     param(
         [AllowNull()]
@@ -371,11 +412,11 @@ function ConvertTo-HtmlTable {
     )
 
     $rows = @($Data)
-    if ($rows.Count -eq 0) {
+    if ((Get-ObjectCount $rows) -eq 0) {
         return "<p class='muted'>$([System.Net.WebUtility]::HtmlEncode($EmptyMessage))</p>"
     }
 
-    if (-not $Properties -or $Properties.Count -eq 0) {
+    if (-not $Properties -or (Get-ObjectCount $Properties) -eq 0) {
         $Properties = @($rows[0].PSObject.Properties | ForEach-Object { $_.Name })
     }
 
@@ -427,44 +468,6 @@ function Get-SeverityRank {
     }
 }
 
-function Get-FindingExecutiveCategory {
-    param(
-        [AllowNull()]
-        [string]$Area,
-
-        [AllowNull()]
-        [string]$Severity
-    )
-
-    $areaText = if ($Area) { $Area } else { '' }
-
-    switch -Regex ($areaText) {
-        '^(Domain Controllers|Global Catalog|FSMO|Forest Recovery|Domain Functional Level|Forest Functional Level|SYSVOL Replication|DC Port Reachability)$' {
-            return 'Critical architecture risks'
-        }
-
-        '^(Account Policy|Privileged Accounts|Privileged Groups|DC Services|Legacy Protocols|WSUS Role Separation)$' {
-            return 'Security hardening items'
-        }
-
-        '^(AD Sites|AD Site Links|Replication|DNS)$' {
-            return 'AD topology/replication issues'
-        }
-
-        '^(User Accounts|Computer Accounts|OU Design|Group Design|GPO Hygiene)$' {
-            return 'Cleanup/hygiene tasks'
-        }
-
-        default {
-            if ($Severity -in @('Critical', 'High')) {
-                return 'Critical architecture risks'
-            }
-
-            return 'Cleanup/hygiene tasks'
-        }
-    }
-}
-
 function Get-ParentDn {
     param(
         [AllowNull()]
@@ -476,7 +479,7 @@ function Get-ParentDn {
     }
 
     $parts = @($DistinguishedName -split '(?<!\\),')
-    if ($parts.Count -le 1) {
+    if ((Get-ObjectCount $parts) -le 1) {
         return ''
     }
 
@@ -522,7 +525,7 @@ function Convert-DnToReadablePath {
     $domainPath = ($domainParts | ForEach-Object { $_ }) -join '.'
     $containers = @($containerParts | ForEach-Object { $_ })
 
-    if ($containers.Count -gt 0) {
+    if ((Get-ObjectCount $containers) -gt 0) {
         [array]::Reverse($containers)
         if ([string]::IsNullOrWhiteSpace($domainPath)) {
             return ($containers -join '/')
@@ -677,7 +680,7 @@ function Export-CsvIfData {
     )
 
     $rows = @($Data)
-    if ($rows.Count -gt 0) {
+    if ((Get-ObjectCount $rows) -gt 0) {
         $rows | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8
     }
 }
@@ -978,9 +981,9 @@ foreach ($dc in $domainControllers) {
     }
 }
 
-Write-Step ("Domain controller rows collected: {0}" -f $dcInventory.Count)
+Write-Step ("Domain controller rows collected: {0}" -f (Get-ObjectCount $dcInventory))
 
-$dcCount = $dcInventory.Count
+$dcCount = (Get-ObjectCount $dcInventory)
 $gcCount = @($dcInventory | Where-Object { $_.IsGlobalCatalog }).Count
 $rodcCount = @($dcInventory | Where-Object { $_.IsReadOnly }).Count
 
@@ -1021,7 +1024,7 @@ foreach ($holder in ($fsmoHolders | Select-Object -Unique)) {
     }
 }
 
-if (($fsmoHolders | Select-Object -Unique).Count -eq 1 -and $dcCount -gt 1) {
+if ((Get-ObjectCount ($fsmoHolders | Select-Object -Unique)) -eq 1 -and $dcCount -gt 1) {
     Add-Finding -Severity 'Low' -Area 'FSMO' -ObjectName ($fsmoHolders | Select-Object -First 1) -Finding 'All FSMO roles are held by one domain controller.' -Evidence 'All five FSMO role names resolve to the same host.' -Recommendation 'This can be acceptable in small domains, but confirm the holder is well protected, monitored, backed up, and not overloaded.'
 }
 
@@ -1048,42 +1051,42 @@ $ous = @(Get-ADOrganizationalUnit -Filter * -Properties ProtectedFromAccidentalD
 $fineGrainedPasswordPolicies = @(Get-ADFineGrainedPasswordPolicy -Filter * -Server $script:QueryServer -ErrorAction SilentlyContinue)
 
 $accountSummary = [pscustomobject]@{
-    TotalUsers                    = $users.Count
-    EnabledUsers                  = $enabledUsers.Count
-    DisabledUsers                 = $disabledUsers.Count
-    StaleEnabledUsers             = $staleActiveUsers.Count
-    NeverLoggedOnEnabledUsers     = $neverLoggedOnUsers.Count
-    PasswordNeverExpiresUsers     = $passwordNeverExpiresUsers.Count
-    AdminCountStaleEnabledUsers   = $privilegedStaleUsers.Count
-    TotalComputers                = $computers.Count
-    EnabledComputers              = $enabledComputers.Count
-    DisabledComputers             = $disabledComputers.Count
-    StaleEnabledComputers         = $staleActiveComputers.Count
-    ServerComputerObjects         = $serverComputers.Count
-    TotalGroups                   = $groups.Count
-    TotalOUs                      = $ous.Count
-    FineGrainedPasswordPolicyCount = $fineGrainedPasswordPolicies.Count
+    TotalUsers                    = (Get-ObjectCount $users)
+    EnabledUsers                  = (Get-ObjectCount $enabledUsers)
+    DisabledUsers                 = (Get-ObjectCount $disabledUsers)
+    StaleEnabledUsers             = (Get-ObjectCount $staleActiveUsers)
+    NeverLoggedOnEnabledUsers     = (Get-ObjectCount $neverLoggedOnUsers)
+    PasswordNeverExpiresUsers     = (Get-ObjectCount $passwordNeverExpiresUsers)
+    AdminCountStaleEnabledUsers   = (Get-ObjectCount $privilegedStaleUsers)
+    TotalComputers                = (Get-ObjectCount $computers)
+    EnabledComputers              = (Get-ObjectCount $enabledComputers)
+    DisabledComputers             = (Get-ObjectCount $disabledComputers)
+    StaleEnabledComputers         = (Get-ObjectCount $staleActiveComputers)
+    ServerComputerObjects         = (Get-ObjectCount $serverComputers)
+    TotalGroups                   = (Get-ObjectCount $groups)
+    TotalOUs                      = (Get-ObjectCount $ous)
+    FineGrainedPasswordPolicyCount = (Get-ObjectCount $fineGrainedPasswordPolicies)
 }
 
-if ($staleActiveUsers.Count -gt 0) {
-    Add-Finding -Severity 'Medium' -Area 'User Accounts' -ObjectName $domain.DNSRoot -Finding 'Enabled stale user accounts were found.' -Evidence "$($staleActiveUsers.Count) enabled users have no LastLogonDate or have LastLogonDate older than $StaleUserDays days." -Recommendation 'Review stale enabled users with application owners and disable or remove accounts that are no longer required.'
+if ((Get-ObjectCount $staleActiveUsers) -gt 0) {
+    Add-Finding -Severity 'Medium' -Area 'User Accounts' -ObjectName $domain.DNSRoot -Finding 'Enabled stale user accounts were found.' -Evidence "$((Get-ObjectCount $staleActiveUsers)) enabled users have no LastLogonDate or have LastLogonDate older than $StaleUserDays days." -Recommendation 'Review stale enabled users with application owners and disable or remove accounts that are no longer required.'
 }
 
-if ($privilegedStaleUsers.Count -gt 0) {
-    Add-Finding -Severity 'High' -Area 'Privileged Accounts' -ObjectName $domain.DNSRoot -Finding 'Stale enabled users with AdminCount=1 were found.' -Evidence "$($privilegedStaleUsers.Count) stale enabled users have AdminCount=1." -Recommendation 'Review privileged group history, remove unnecessary rights, and disable stale privileged accounts.'
+if ((Get-ObjectCount $privilegedStaleUsers) -gt 0) {
+    Add-Finding -Severity 'High' -Area 'Privileged Accounts' -ObjectName $domain.DNSRoot -Finding 'Stale enabled users with AdminCount=1 were found.' -Evidence "$((Get-ObjectCount $privilegedStaleUsers)) stale enabled users have AdminCount=1." -Recommendation 'Review privileged group history, remove unnecessary rights, and disable stale privileged accounts.'
 }
 
-if ($passwordNeverExpiresUsers.Count -gt 0) {
-    Add-Finding -Severity 'Medium' -Area 'User Accounts' -ObjectName $domain.DNSRoot -Finding 'Enabled users with PasswordNeverExpires were found.' -Evidence "$($passwordNeverExpiresUsers.Count) enabled users have PasswordNeverExpires=True." -Recommendation 'Validate whether these are managed service accounts or documented exceptions; remove the setting where not required.'
+if ((Get-ObjectCount $passwordNeverExpiresUsers) -gt 0) {
+    Add-Finding -Severity 'Medium' -Area 'User Accounts' -ObjectName $domain.DNSRoot -Finding 'Enabled users with PasswordNeverExpires were found.' -Evidence "$((Get-ObjectCount $passwordNeverExpiresUsers)) enabled users have PasswordNeverExpires=True." -Recommendation 'Validate whether these are managed service accounts or documented exceptions; remove the setting where not required.'
 }
 
-if ($staleActiveComputers.Count -gt 0) {
-    Add-Finding -Severity 'Medium' -Area 'Computer Accounts' -ObjectName $domain.DNSRoot -Finding 'Enabled stale computer accounts were found.' -Evidence "$($staleActiveComputers.Count) enabled computer accounts have no LastLogonDate or have LastLogonDate older than $StaleComputerDays days." -Recommendation 'Review stale computer accounts with endpoint/server owners and disable or remove decommissioned objects.'
+if ((Get-ObjectCount $staleActiveComputers) -gt 0) {
+    Add-Finding -Severity 'Medium' -Area 'Computer Accounts' -ObjectName $domain.DNSRoot -Finding 'Enabled stale computer accounts were found.' -Evidence "$((Get-ObjectCount $staleActiveComputers)) enabled computer accounts have no LastLogonDate or have LastLogonDate older than $StaleComputerDays days." -Recommendation 'Review stale computer accounts with endpoint/server owners and disable or remove decommissioned objects.'
 }
 
 $unprotectedOus = @($ous | Where-Object { $_.ProtectedFromAccidentalDeletion -ne $true })
-if ($unprotectedOus.Count -gt 0) {
-    Add-Finding -Severity 'Low' -Area 'OU Design' -ObjectName $domain.DNSRoot -Finding 'OUs without accidental deletion protection were found.' -Evidence "$($unprotectedOus.Count) OUs have ProtectedFromAccidentalDeletion not set to True." -Recommendation 'Enable accidental deletion protection on production OUs after confirming automation dependencies.'
+if ((Get-ObjectCount $unprotectedOus) -gt 0) {
+    Add-Finding -Severity 'Low' -Area 'OU Design' -ObjectName $domain.DNSRoot -Finding 'OUs without accidental deletion protection were found.' -Evidence "$((Get-ObjectCount $unprotectedOus)) OUs have ProtectedFromAccidentalDeletion not set to True." -Recommendation 'Enable accidental deletion protection on production OUs after confirming automation dependencies.'
 }
 
 $groupByOu = @(
@@ -1099,8 +1102,8 @@ $groupByOu = @(
 )
 
 $groupsInDefaultUsersContainer = @($groups | Where-Object { (Get-ParentDn $_.DistinguishedName) -match '^CN=Users,' })
-if ($groupsInDefaultUsersContainer.Count -gt 10) {
-    Add-Finding -Severity 'Low' -Area 'Group Design' -ObjectName 'CN=Users' -Finding 'Many groups are located in the default Users container.' -Evidence "$($groupsInDefaultUsersContainer.Count) groups are in CN=Users." -Recommendation 'Review whether business/security groups should be moved to managed OUs with clear delegation and GPO design.'
+if ((Get-ObjectCount $groupsInDefaultUsersContainer) -gt 10) {
+    Add-Finding -Severity 'Low' -Area 'Group Design' -ObjectName 'CN=Users' -Finding 'Many groups are located in the default Users container.' -Evidence "$((Get-ObjectCount $groupsInDefaultUsersContainer)) groups are in CN=Users." -Recommendation 'Review whether business/security groups should be moved to managed OUs with clear delegation and GPO design.'
 }
 
 $privilegedGroupNames = @(
@@ -1124,20 +1127,20 @@ foreach ($groupName in $privilegedGroupNames) {
 
         $null = $privilegedGroupSummary.Add([pscustomobject]@{
             GroupName    = $groupName
-            DirectMemberCount = $members.Count
+            DirectMemberCount = (Get-ObjectCount $members)
             DirectMembers = ($memberNames -join ', ')
         })
 
-        if ($groupName -eq 'Domain Admins' -and $members.Count -gt 5) {
-            Add-Finding -Severity 'Medium' -Area 'Privileged Groups' -ObjectName $groupName -Finding 'Domain Admins has more than five direct members.' -Evidence "Direct member count is $($members.Count)." -Recommendation 'Review privileged-access model and reduce standing Domain Admin membership.'
+        if ($groupName -eq 'Domain Admins' -and (Get-ObjectCount $members) -gt 5) {
+            Add-Finding -Severity 'Medium' -Area 'Privileged Groups' -ObjectName $groupName -Finding 'Domain Admins has more than five direct members.' -Evidence "Direct member count is $((Get-ObjectCount $members))." -Recommendation 'Review privileged-access model and reduce standing Domain Admin membership.'
         }
 
-        if ($groupName -eq 'Enterprise Admins' -and $members.Count -gt 2) {
-            Add-Finding -Severity 'High' -Area 'Privileged Groups' -ObjectName $groupName -Finding 'Enterprise Admins has more than two direct members.' -Evidence "Direct member count is $($members.Count)." -Recommendation 'Review forest-wide administrative access and reduce standing Enterprise Admin membership.'
+        if ($groupName -eq 'Enterprise Admins' -and (Get-ObjectCount $members) -gt 2) {
+            Add-Finding -Severity 'High' -Area 'Privileged Groups' -ObjectName $groupName -Finding 'Enterprise Admins has more than two direct members.' -Evidence "Direct member count is $((Get-ObjectCount $members))." -Recommendation 'Review forest-wide administrative access and reduce standing Enterprise Admin membership.'
         }
 
-        if ($groupName -in @('Account Operators', 'Server Operators', 'Backup Operators', 'Print Operators') -and $members.Count -gt 0) {
-            Add-Finding -Severity 'Medium' -Area 'Privileged Groups' -ObjectName $groupName -Finding 'Legacy operator group has direct members.' -Evidence "Direct member count is $($members.Count)." -Recommendation 'Validate whether this legacy delegation is still required; prefer least-privilege delegated administration.'
+        if ($groupName -in @('Account Operators', 'Server Operators', 'Backup Operators', 'Print Operators') -and (Get-ObjectCount $members) -gt 0) {
+            Add-Finding -Severity 'Medium' -Area 'Privileged Groups' -ObjectName $groupName -Finding 'Legacy operator group has direct members.' -Evidence "Direct member count is $((Get-ObjectCount $members))." -Recommendation 'Validate whether this legacy delegation is still required; prefer least-privilege delegated administration.'
         }
     }
     catch {
@@ -1166,8 +1169,8 @@ try {
 
             [pscustomobject]@{
                 SiteName      = $site.Name
-                DomainControllers = $siteDcs.Count
-                Subnets       = $siteSubnets.Count
+                DomainControllers = (Get-ObjectCount $siteDcs)
+                Subnets       = (Get-ObjectCount $siteSubnets)
                 Location      = [string]$site.Location
                 Description   = [string]$site.Description
                 ProtectedFromAccidentalDeletion = [string]$site.ProtectedFromAccidentalDeletion
@@ -1182,7 +1185,7 @@ try {
             [pscustomobject]@{
                 SiteLinkName = $siteLink.Name
                 SitesIncluded = ($includedSiteNames -join ', ')
-                SiteCount = $includedSiteNames.Count
+                SiteCount = (Get-ObjectCount $includedSiteNames)
                 Cost = $siteLink.Cost
                 ReplicationFrequencyMinutes = $siteLink.ReplicationFrequencyInMinutes
                 Transport = [string]$siteLink.InterSiteTransportProtocol
@@ -1191,8 +1194,8 @@ try {
         }
     )
 
-    if ($sites.Count -gt 1 -and $siteLinks.Count -eq 0) {
-        Add-Finding -Severity 'High' -Area 'AD Sites' -ObjectName $domain.DNSRoot -Finding 'Multiple AD sites exist but no site links were discovered.' -Evidence "$($sites.Count) sites, 0 site links." -Recommendation 'Create site links that reflect WAN topology, cost, and replication frequency.'
+    if ((Get-ObjectCount $sites) -gt 1 -and (Get-ObjectCount $siteLinks) -eq 0) {
+        Add-Finding -Severity 'High' -Area 'AD Sites' -ObjectName $domain.DNSRoot -Finding 'Multiple AD sites exist but no site links were discovered.' -Evidence "$((Get-ObjectCount $sites)) sites, 0 site links." -Recommendation 'Create site links that reflect WAN topology, cost, and replication frequency.'
     }
 
     foreach ($siteRow in $siteSummary) {
@@ -1219,10 +1222,10 @@ try {
         }
     }
 
-    if ($siteLinks.Count -gt 1) {
+    if ((Get-ObjectCount $siteLinks) -gt 1) {
         $siteLinkCosts = @($siteLinks | Select-Object -ExpandProperty Cost -Unique)
-        if ($siteLinkCosts.Count -eq 1 -and [int]$siteLinkCosts[0] -eq 100) {
-            Add-Finding -Severity 'Low' -Area 'AD Site Links' -ObjectName $domain.DNSRoot -Finding 'All site links use default cost 100.' -Evidence "$($siteLinks.Count) site links all have cost 100." -Recommendation 'Review whether site-link costs reflect WAN preference, bandwidth, latency, and failover paths.'
+        if ((Get-ObjectCount $siteLinkCosts) -eq 1 -and [int]$siteLinkCosts[0] -eq 100) {
+            Add-Finding -Severity 'Low' -Area 'AD Site Links' -ObjectName $domain.DNSRoot -Finding 'All site links use default cost 100.' -Evidence "$((Get-ObjectCount $siteLinks)) site links all have cost 100." -Recommendation 'Review whether site-link costs reflect WAN preference, bandwidth, latency, and failover paths.'
         }
     }
 }
@@ -1236,8 +1239,8 @@ try {
             Select-Object Server, Partner, FirstFailureTime, FailureCount, LastError, LastErrorMessage
     )
 
-    if ($replicationFailures.Count -gt 0) {
-        Add-Finding -Severity 'High' -Area 'Replication' -ObjectName $domain.DNSRoot -Finding 'AD replication failures were reported.' -Evidence "$($replicationFailures.Count) replication failure records were returned." -Recommendation 'Review the ReplicationFailures CSV and resolve DNS, network, secure-channel, or lingering-object causes.'
+    if ((Get-ObjectCount $replicationFailures) -gt 0) {
+        Add-Finding -Severity 'High' -Area 'Replication' -ObjectName $domain.DNSRoot -Finding 'AD replication failures were reported.' -Evidence "$((Get-ObjectCount $replicationFailures)) replication failure records were returned." -Recommendation 'Review the ReplicationFailures CSV and resolve DNS, network, secure-channel, or lingering-object causes.'
     }
 }
 catch {
@@ -1255,8 +1258,8 @@ try {
         ($_.LastReplicationSuccess -and $_.LastReplicationSuccess -lt (Get-Date).AddHours(-24))
     })
 
-    if ($staleReplicationPartners.Count -gt 0) {
-        Add-Finding -Severity 'Medium' -Area 'Replication' -ObjectName $domain.DNSRoot -Finding 'Replication partners show failures or old successful replication timestamps.' -Evidence "$($staleReplicationPartners.Count) partner metadata rows have failures or LastReplicationSuccess older than 24 hours." -Recommendation 'Review replication partner metadata and validate convergence across all naming contexts.'
+    if ((Get-ObjectCount $staleReplicationPartners) -gt 0) {
+        Add-Finding -Severity 'Medium' -Area 'Replication' -ObjectName $domain.DNSRoot -Finding 'Replication partners show failures or old successful replication timestamps.' -Evidence "$((Get-ObjectCount $staleReplicationPartners)) partner metadata rows have failures or LastReplicationSuccess older than 24 hours." -Recommendation 'Review replication partner metadata and validate convergence across all naming contexts.'
     }
 }
 catch {
@@ -1315,14 +1318,14 @@ if ($groupPolicyAvailable) {
                 Select-Object DisplayName, Id, Owner, GpoStatus, CreationTime, ModificationTime
         )
 
-        $gpoSummary.TotalGpos = $gpos.Count
-        $gpoSummary.UnlinkedGpos = $unlinkedGpoRows.Count
+        $gpoSummary.TotalGpos = (Get-ObjectCount $gpos)
+        $gpoSummary.UnlinkedGpos = (Get-ObjectCount $unlinkedGpoRows)
         $gpoSummary.AllSettingsDisabled = @($gpos | Where-Object { $_.GpoStatus -eq 'AllSettingsDisabled' }).Count
         $gpoSummary.ComputerSettingsDisabled = @($gpos | Where-Object { $_.GpoStatus -eq 'ComputerSettingsDisabled' }).Count
         $gpoSummary.UserSettingsDisabled = @($gpos | Where-Object { $_.GpoStatus -eq 'UserSettingsDisabled' }).Count
 
-        if ($unlinkedGpoRows.Count -gt 0) {
-            Add-Finding -Severity 'Low' -Area 'GPO Hygiene' -ObjectName $domain.DNSRoot -Finding 'Unlinked GPOs were found.' -Evidence "$($unlinkedGpoRows.Count) GPOs were not linked at domain, OU, or site scope." -Recommendation 'Review unlinked GPOs and delete retired policies after confirming they are not used for backup, staging, or migration.'
+        if ((Get-ObjectCount $unlinkedGpoRows) -gt 0) {
+            Add-Finding -Severity 'Low' -Area 'GPO Hygiene' -ObjectName $domain.DNSRoot -Finding 'Unlinked GPOs were found.' -Evidence "$((Get-ObjectCount $unlinkedGpoRows)) GPOs were not linked at domain, OU, or site scope." -Recommendation 'Review unlinked GPOs and delete retired policies after confirming they are not used for backup, staging, or migration.'
         }
 
         if ($IncludeGpoScan) {
@@ -1344,7 +1347,7 @@ if ($groupPolicyAvailable) {
                 }
             }
 
-            $gpoSummary.WsUsPolicyGpos = $wsusGpoRows.Count
+            $gpoSummary.WsUsPolicyGpos = (Get-ObjectCount $wsusGpoRows)
         }
     }
     catch {
@@ -1518,7 +1521,7 @@ $dnsArchitectureSummary = [pscustomobject]@{
 if ($dnsServerModuleAvailable) {
     $dnsDcCandidates = @()
 
-    if ($serviceRows.Count -gt 0) {
+    if ((Get-ObjectCount $serviceRows) -gt 0) {
         $dnsDcCandidates = @(
             $serviceRows |
                 Where-Object { $_.ServiceName -eq 'DNS' -and $_.State -eq 'Running' } |
@@ -1526,7 +1529,7 @@ if ($dnsServerModuleAvailable) {
         )
     }
 
-    if ($dnsDcCandidates.Count -eq 0) {
+    if ((Get-ObjectCount $dnsDcCandidates) -eq 0) {
         $dnsDcCandidates = @($dcInventory | Select-Object -ExpandProperty HostName)
     }
 
@@ -1584,13 +1587,13 @@ if ($dnsServerModuleAvailable) {
         }
     }
 
-    $dnsArchitectureSummary.TotalZones = $dnsZoneRows.Count
+    $dnsArchitectureSummary.TotalZones = (Get-ObjectCount $dnsZoneRows)
     $dnsArchitectureSummary.ADIntegratedZones = @($dnsZoneRows | Where-Object { $_.IsDsIntegrated -eq 'True' }).Count
     $dnsArchitectureSummary.PrimaryZones = @($dnsZoneRows | Where-Object { $_.ZoneType -eq 'Primary' }).Count
     $dnsArchitectureSummary.SecondaryZones = @($dnsZoneRows | Where-Object { $_.ZoneType -eq 'Secondary' }).Count
     $dnsArchitectureSummary.ReverseLookupZones = @($dnsZoneRows | Where-Object { $_.IsReverseLookupZone -eq 'True' }).Count
     $dnsArchitectureSummary.NonSecureDynamicZones = @($dnsZoneRows | Where-Object { $_.DynamicUpdate -eq 'NonsecureAndSecure' }).Count
-    $dnsArchitectureSummary.ForwarderCount = $dnsForwarderRows.Count
+    $dnsArchitectureSummary.ForwarderCount = (Get-ObjectCount $dnsForwarderRows)
 
     if (-not $dnsArchitectureSummary.DomainDnsZoneFound) {
         Add-Finding -Severity 'High' -Area 'DNS' -ObjectName $domain.DNSRoot -Finding 'The domain DNS zone was not found as an AD-integrated zone on queried DNS servers.' -Evidence "Queried DNS servers: $($dnsDcCandidates -join ', ')." -Recommendation 'Validate DNS role placement and confirm the AD domain zone is hosted, AD-integrated, and replicated to the expected DNS servers.'
@@ -1612,75 +1615,24 @@ $findingSeveritySummary = @(
     }
 )
 
-$executiveCategoryOrder = @(
-    'Critical architecture risks',
-    'Security hardening items',
-    'AD topology/replication issues',
-    'Cleanup/hygiene tasks'
-)
-
-$executiveFindingRows = @(
-    foreach ($finding in $findingsSorted) {
-        [pscustomobject]@{
-            ExecutiveCategory = Get-FindingExecutiveCategory -Area $finding.Area -Severity $finding.Severity
-            Severity          = $finding.Severity
-            Area              = $finding.Area
-            ObjectName        = $finding.ObjectName
-            Finding           = $finding.Finding
-            Evidence          = $finding.Evidence
-            Recommendation    = $finding.Recommendation
-        }
-    }
-)
-
-$executiveCategorySummary = @(
-    foreach ($category in $executiveCategoryOrder) {
-        $categoryFindings = @($executiveFindingRows | Where-Object { $_.ExecutiveCategory -eq $category })
-        $highestSeverity = ''
-
-        foreach ($severity in @('Critical', 'High', 'Medium', 'Low', 'Info')) {
-            if (@($categoryFindings | Where-Object { $_.Severity -eq $severity }).Count -gt 0) {
-                $highestSeverity = $severity
-                break
-            }
-        }
-
-        [pscustomobject]@{
-            Category        = $category
-            Critical        = @($categoryFindings | Where-Object { $_.Severity -eq 'Critical' }).Count
-            High            = @($categoryFindings | Where-Object { $_.Severity -eq 'High' }).Count
-            Medium          = @($categoryFindings | Where-Object { $_.Severity -eq 'Medium' }).Count
-            Low             = @($categoryFindings | Where-Object { $_.Severity -eq 'Low' }).Count
-            Info            = @($categoryFindings | Where-Object { $_.Severity -eq 'Info' }).Count
-            Total           = $categoryFindings.Count
-            HighestSeverity = $highestSeverity
-        }
-    }
-)
-
-$criticalArchitectureFindings = @($executiveFindingRows | Where-Object { $_.ExecutiveCategory -eq 'Critical architecture risks' })
-$securityHardeningFindings = @($executiveFindingRows | Where-Object { $_.ExecutiveCategory -eq 'Security hardening items' })
-$topologyReplicationFindings = @($executiveFindingRows | Where-Object { $_.ExecutiveCategory -eq 'AD topology/replication issues' })
-$cleanupHygieneFindings = @($executiveFindingRows | Where-Object { $_.ExecutiveCategory -eq 'Cleanup/hygiene tasks' })
-
 $architectureCounts = [pscustomobject]@{
     DomainControllers      = $dcCount
     GlobalCatalogs         = $gcCount
     ReadOnlyDomainControllers = $rodcCount
-    Users                  = $users.Count
-    EnabledUsers           = $enabledUsers.Count
-    StaleEnabledUsers      = $staleActiveUsers.Count
-    Computers              = $computers.Count
-    StaleEnabledComputers  = $staleActiveComputers.Count
-    Groups                 = $groups.Count
-    OUs                    = $ous.Count
+    Users                  = (Get-ObjectCount $users)
+    EnabledUsers           = (Get-ObjectCount $enabledUsers)
+    StaleEnabledUsers      = (Get-ObjectCount $staleActiveUsers)
+    Computers              = (Get-ObjectCount $computers)
+    StaleEnabledComputers  = (Get-ObjectCount $staleActiveComputers)
+    Groups                 = (Get-ObjectCount $groups)
+    OUs                    = (Get-ObjectCount $ous)
     Sites                  = @($sites).Count
     Subnets                = @($subnets).Count
     SiteLinks              = @($siteLinks).Count
     GPOs                   = $gpoSummary.TotalGpos
     DnsZones               = $dnsArchitectureSummary.TotalZones
     DnsForwarders          = $dnsArchitectureSummary.ForwarderCount
-    Findings               = $findingsSorted.Count
+    Findings               = (Get-ObjectCount $findingsSorted)
 }
 
 $htmlPath = Join-Path $runFolder 'AD_Architecture_Assessment.html'
@@ -1688,8 +1640,6 @@ $jsonPath = Join-Path $runFolder 'AD_Architecture_Assessment.json'
 $findingsCsvPath = Join-Path $runFolder 'Findings.csv'
 
 Export-CsvIfData -Data $findingsSorted -Path $findingsCsvPath
-Export-CsvIfData -Data $executiveCategorySummary -Path (Join-Path $runFolder 'ExecutiveFindingSummary.csv')
-Export-CsvIfData -Data $executiveFindingRows -Path (Join-Path $runFolder 'ExecutiveFindings.csv')
 Export-CsvIfData -Data $dcInventory -Path (Join-Path $runFolder 'DomainControllers.csv')
 Export-CsvIfData -Data $siteSummary -Path (Join-Path $runFolder 'Sites.csv')
 Export-CsvIfData -Data $siteLinkSummary -Path (Join-Path $runFolder 'SiteLinks.csv')
@@ -1726,8 +1676,6 @@ $reportData = [pscustomobject]@{
     GpoSummary                 = $gpoSummary
     DnsArchitectureSummary     = $dnsArchitectureSummary
     FindingSeveritySummary     = $findingSeveritySummary
-    ExecutiveCategorySummary   = $executiveCategorySummary
-    ExecutiveFindings          = $executiveFindingRows
     Findings                   = $findingsSorted
     DomainControllers          = @($dcInventory)
     Sites                      = @($siteSummary)
@@ -1906,32 +1854,6 @@ $css
 </section>
 
 <section>
-    <h2>Executive Finding Groups</h2>
-    <p class="muted">Findings are grouped into architecture risk, security hardening, topology/replication, and cleanup/hygiene categories so the remediation plan can be assigned to the right owners.</p>
-    $(ConvertTo-HtmlTable -Data $executiveCategorySummary)
-</section>
-
-<section>
-    <h2>Critical Architecture Risks</h2>
-    $(ConvertTo-HtmlTable -Data $criticalArchitectureFindings -Properties @('Severity', 'Area', 'ObjectName', 'Finding', 'Evidence', 'Recommendation') -EmptyMessage 'No critical architecture risk findings were generated.')
-</section>
-
-<section>
-    <h2>Security Hardening Items</h2>
-    $(ConvertTo-HtmlTable -Data $securityHardeningFindings -Properties @('Severity', 'Area', 'ObjectName', 'Finding', 'Evidence', 'Recommendation') -EmptyMessage 'No security hardening findings were generated.')
-</section>
-
-<section>
-    <h2>AD Topology And Replication Issues</h2>
-    $(ConvertTo-HtmlTable -Data $topologyReplicationFindings -Properties @('Severity', 'Area', 'ObjectName', 'Finding', 'Evidence', 'Recommendation') -EmptyMessage 'No topology or replication findings were generated.')
-</section>
-
-<section>
-    <h2>Cleanup And Hygiene Tasks</h2>
-    $(ConvertTo-HtmlTable -Data $cleanupHygieneFindings -Properties @('Severity', 'Area', 'ObjectName', 'Finding', 'Evidence', 'Recommendation') -EmptyMessage 'No cleanup or hygiene findings were generated.')
-</section>
-
-<section>
     <h2>Finding Severity Summary</h2>
     $(ConvertTo-HtmlTable -Data $findingSeveritySummary)
 </section>
@@ -2041,3 +1963,4 @@ Write-Host ("Findings CSV  : {0}" -f $findingsCsvPath)
 Write-Host ''
 Write-Host 'Finding summary:'
 $findingSeveritySummary | Format-Table -AutoSize
+
