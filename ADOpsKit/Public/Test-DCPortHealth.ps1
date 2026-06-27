@@ -84,8 +84,9 @@ function Test-DCPortHealth {
     foreach ($dc in $domainControllers) {
         Write-Host "`nChecking $($dc.HostName) [$($dc.Site)]..." -ForegroundColor Cyan
 
-        foreach ($port in $portsToCheck.Keys) {
-            $serviceName = $portsToCheck[$port]
+        foreach ($entry in $portsToCheck.GetEnumerator()) {
+            $port        = $entry.Key
+            $serviceName = $entry.Value
             $isOpen      = Test-ADOKTcpPort -ComputerName $dc.HostName -Port $port -TimeoutSeconds $TimeoutSeconds
             $status      = if ($isOpen) { 'Open' } else { 'Closed' }
             $color        = if ($isOpen) { 'Green' } else { 'Red' }
