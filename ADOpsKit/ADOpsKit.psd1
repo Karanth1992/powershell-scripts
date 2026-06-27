@@ -11,7 +11,7 @@
 RootModule = 'ADOpsKit.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.1.1'
+ModuleVersion = '1.1.2'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -118,7 +118,7 @@ PrivateData = @{
         # IconUri = ''
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'v1.1.1 — Fix Test-DCPortHealth service name display (null ref on ordered hashtable integer keys).'
+        ReleaseNotes = 'v1.1.2 — Fix Register-ADOpsKitScheduledTasks ambiguous parameter set error on Register-ScheduledTask.'
 
     } # End of PSData hashtable
 

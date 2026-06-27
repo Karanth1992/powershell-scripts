@@ -129,7 +129,6 @@ try {
         $escaped  = $fullScript -replace '"', '\"'
         $action   = New-ScheduledTaskAction -Execute $psExe -Argument "-NonInteractive -NoProfile -ExecutionPolicy Bypass -Command `"$escaped`""
         $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 2) -MultipleInstances IgnoreNew -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5)
-        $principal = New-ScheduledTaskPrincipal -UserId $Account -LogonType Password -RunLevel Highest
 
         $existing = Get-ScheduledTask -TaskPath '\ADOpsKit\' -TaskName $TaskName -ErrorAction SilentlyContinue
         if ($existing) {
@@ -137,7 +136,8 @@ try {
         }
 
         Register-ScheduledTask -TaskPath '\ADOpsKit\' -TaskName $TaskName -Description $Description `
-            -Action $action -Trigger $Trigger -Principal $principal -Settings $settings -Password $Password | Out-Null
+            -Action $action -Trigger $Trigger -Settings $settings `
+            -User $Account -Password $Password -RunLevel Highest | Out-Null
 
         Write-Host "  [OK] Registered: \ADOpsKit\$TaskName" -ForegroundColor Green
     }
