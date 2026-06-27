@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ADOpsKit Guide",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-Command", "$listener = [System.Net.HttpListener]::new(); $listener.Prefixes.Add('http://localhost:3456/'); $listener.Start(); while ($listener.IsListening) { $ctx = $listener.GetContext(); $path = 'C:\\Github\\powershell-scripts' + $ctx.Request.Url.LocalPath.Replace('/', '\\'); if ($ctx.Request.Url.LocalPath -eq '/') { $path = 'C:\\Github\\powershell-scripts\\ADOpsKit-Usage-Guide.html' }; $bytes = [System.IO.File]::ReadAllBytes($path); $ctx.Response.ContentType = 'text/html'; $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length); $ctx.Response.Close() }"],
+      "port": 3456
+    }
+  ]
+}
