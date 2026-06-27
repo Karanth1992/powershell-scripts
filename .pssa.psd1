@@ -5,6 +5,7 @@
         'PSUseSingularNouns',
         'PSUseShouldProcessForStateChangingFunctions',
         'PSUseBOMForUnicodeEncodedFile',
-        'PSAvoidUsingEmptyCatchBlock'
+        'PSAvoidUsingEmptyCatchBlock',
+        'PSAvoidUsingPlainTextForPassword'
     )
 }
