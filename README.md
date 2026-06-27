@@ -1,154 +1,139 @@
-# Active Directory PowerShell Scripts
+# PowerShell Scripts — Active Directory & Hybrid Identity
 
-PowerShell tools and reference material for Active Directory administration, reporting, health checks, GPO inventory, domain-controller diagnostics, and LDAP security review.
+[![PSScriptAnalyzer](https://github.com/Karanth1992/powershell-scripts/actions/workflows/pssa.yml/badge.svg)](https://github.com/Karanth1992/powershell-scripts/actions/workflows/pssa.yml)
+![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue?logo=powershell)
+![Platform](https://img.shields.io/badge/platform-Windows%20Server-lightgrey)
 
-These scripts are intended for AD administrators, infrastructure engineers, and service desk escalation teams who need practical, repeatable checks for domain-controller health and directory operations.
+PowerShell automation tools for Active Directory administration, Hybrid Identity (Entra Connect), GPO management, DC health checks, and security auditing.
 
-## Contents
+Detailed write-ups and walkthroughs for these scripts are published at **[karanth.ovh](https://karanth.ovh)**.
 
-| File | Purpose | Output |
-| --- | --- | --- |
-| [AD-PowerShell-Cheatsheet.md](AD-PowerShell-Cheatsheet.md) | Quick Active Directory PowerShell command reference for admins and service desk engineers. | Markdown reference guide |
-| [Get-ADArchitectureAssessment.ps1](Get-ADArchitectureAssessment.ps1) | Builds a broad AD architecture inventory and issue report covering domains, forest, DCs, users, computers, groups, OUs, sites, replication, GPOs, ports, and services. | HTML, JSON, and CSV reports |
-| [Get-ADForestHealth.ps1](Get-ADForestHealth.ps1) | Generates a forest-wide health report for domain controllers, including DCDiag tests, disk, CPU, memory, and uptime. | Color-coded HTML report |
-| [Get-AccountLockoutReport.ps1](Get-AccountLockoutReport.ps1) | Reports currently locked AD accounts and attempts to identify source computers from Security Event ID 4740 on the PDC Emulator. | TXT, CSV, and HTML reports |
-| [Get-GPOInventory.ps1](Get-GPOInventory.ps1) | Inventories GPOs, links, permissions, status, timestamps, and WMI filters for a domain. | Styled HTML report |
-| [Get-GPOInventoryWithSettings-DC.ps1](Get-GPOInventoryWithSettings-DC.ps1) | Extended GPO inventory that also reads configured settings from `Get-GPOReport` XML. | Styled HTML report, optional raw GPO XML |
-| [Get-InsecureLDAPBinds.ps1](Get-InsecureLDAPBinds.ps1) | Detects unsigned and simple LDAP binds by reading Directory Service Event ID 2889 across domain controllers. | Dated CSV report |
-| [Test-DCPortHealth.ps1](Test-DCPortHealth.ps1) | Tests critical AD-related TCP ports across all domain controllers. | Console table, optional CSV |
-| [Enable-DCPerformanceBaseline.ps1](Enable-DCPerformanceBaseline.ps1) | Creates and starts a domain-controller performance baseline Data Collector Set using `logman`. | Local binary performance logs on each DC |
+---
+
+## Repository Structure
+
+```
+powershell-scripts/
+├── active-directory/
+│   ├── health/        → DC health, port tests, performance baseline
+│   ├── audit/         → LDAP security, account lockouts
+│   ├── inventory/     → AD architecture, GPO inventory
+│   └── reference/     → PowerShell cheat sheet
+└── azure-ad/          → Entra Connect / Hybrid Identity
+```
+
+---
+
+## active-directory/health
+
+| Script | Purpose | Output |
+|--------|---------|--------|
+| [Get-ADForestHealth.ps1](active-directory/health/Get-ADForestHealth.ps1) | Forest-wide DC health report — DCDiag, disk, CPU, memory, uptime. | Color-coded HTML |
+| [Test-DCPortHealth.ps1](active-directory/health/Test-DCPortHealth.ps1) | Tests critical AD TCP ports across all domain controllers. | Console table, CSV |
+| [Enable-DCPerformanceBaseline.ps1](active-directory/health/Enable-DCPerformanceBaseline.ps1) | Deploys a `logman` performance Data Collector Set on each DC. | Binary perf logs on each DC |
+
+## active-directory/audit
+
+| Script | Purpose | Output |
+|--------|---------|--------|
+| [Get-InsecureLDAPBinds.ps1](active-directory/audit/Get-InsecureLDAPBinds.ps1) | Detects unsigned and simple LDAP binds via Event ID 2889. | Dated CSV |
+| [Get-AccountLockoutReport.ps1](active-directory/audit/Get-AccountLockoutReport.ps1) | Reports locked accounts and traces lockout source via Event ID 4740. | TXT, CSV, HTML |
+
+## active-directory/inventory
+
+| Script | Purpose | Output |
+|--------|---------|--------|
+| [Get-ADArchitectureAssessment.ps1](active-directory/inventory/Get-ADArchitectureAssessment.ps1) | Broad AD inventory — domains, DCs, users, computers, OUs, sites, replication, GPOs, ports, services. | HTML, JSON, CSV |
+| [Get-GPOInventory.ps1](active-directory/inventory/Get-GPOInventory.ps1) | GPO inventory with links, permissions, status, and WMI filters. | Styled HTML |
+| [Get-GPOInventoryWithSettings-DC.ps1](active-directory/inventory/Get-GPOInventoryWithSettings-DC.ps1) | Extended GPO inventory including configured settings from `Get-GPOReport` XML. | Styled HTML, optional raw XML |
+
+## active-directory/reference
+
+| File | Purpose |
+|------|---------|
+| [AD-PowerShell-Cheatsheet.md](active-directory/reference/AD-PowerShell-Cheatsheet.md) | Quick Active Directory PowerShell command reference. |
+
+## azure-ad
+
+| Script | Purpose | Output |
+|--------|---------|--------|
+| [Get-EntraConnectSyncStatus.ps1](azure-ad/Get-EntraConnectSyncStatus.ps1) | Entra Connect health check — sync cycle, connector errors, pending exports, password sync, staging mode. | Console summary, CSV |
+
+---
 
 ## Requirements
 
-- Windows PowerShell 5.1 unless a script states otherwise.
-- Active Directory PowerShell module.
-- Group Policy PowerShell module for GPO inventory scripts.
-- Administrative privileges appropriate to the target domain controllers.
-- Network access to domain controllers for LDAP, RPC, SMB, WMI/DCOM, or WinRM depending on the script.
-- Read access to relevant event logs when collecting lockout or LDAP bind evidence.
-
-Run PowerShell as Administrator before executing scripts that query domain controllers or remote event logs.
+- Windows PowerShell 5.1 or later.
+- Active Directory PowerShell module (`RSAT-AD-PowerShell`).
+- Group Policy module for GPO inventory scripts.
+- ADSync module (installed with Entra Connect) for `azure-ad/` scripts.
+- Administrative rights appropriate for the target environment.
 
 ```powershell
 Import-Module ActiveDirectory
 Import-Module GroupPolicy
 ```
 
-## Quick Start
+---
 
-Clone the repository and move into the Active Directory folder:
+## Quick Start
 
 ```powershell
 git clone https://github.com/Karanth1992/powershell-scripts.git
-cd .\powershell-scripts\active-directory
+cd .\powershell-scripts
 ```
 
 Run a read-only health or inventory script:
 
 ```powershell
-.\Test-DCPortHealth.ps1 -TimeoutSeconds 5 -ExportPath "C:\temp\DCPortHealth.csv"
+# DC port health
+.\active-directory\health\Test-DCPortHealth.ps1 -TimeoutSeconds 5 -ExportPath "C:\temp\DCPortHealth.csv"
 
-.\Get-GPOInventory.ps1 -DomainName "corp.contoso.com" -OutputPath "C:\temp\GPOInventory.html"
+# Forest health report
+.\active-directory\health\Get-ADForestHealth.ps1
 
-.\Get-ADArchitectureAssessment.ps1 -DomainName "corp.contoso.com" -OutputFolder "C:\temp\ADAssessment"
+# GPO inventory
+.\active-directory\inventory\Get-GPOInventory.ps1 -DomainName "corp.contoso.com" -OutputPath "C:\temp\GPOInventory.html"
+
+# Full AD architecture assessment
+.\active-directory\inventory\Get-ADArchitectureAssessment.ps1 -DomainName "corp.contoso.com" -OutputFolder "C:\temp\ADAssessment"
+
+# Entra Connect sync status (run on or against the Entra Connect server)
+.\azure-ad\Get-EntraConnectSyncStatus.ps1 -ComputerName "AADCONN01" -ExportPath "C:\temp\sync.csv"
 ```
 
-## Script Examples
-
-### Active Directory Architecture Assessment
-
-```powershell
-.\Get-ADArchitectureAssessment.ps1
-.\Get-ADArchitectureAssessment.ps1 -DomainName "corp.contoso.com"
-.\Get-ADArchitectureAssessment.ps1 -DomainName "corp.contoso.com" -DomainController "DC01.corp.contoso.com"
-.\Get-ADArchitectureAssessment.ps1 -OutputFolder "D:\Reports\ADAssessment" -StaleUserDays 120 -StaleComputerDays 120
-```
-
-Use `-SkipPortChecks` or `-SkipServiceChecks` when network or WMI/DCOM access is restricted.
-
-### Forest Health Report
-
-```powershell
-.\Get-ADForestHealth.ps1
-```
-
-Review and update the output folder and optional email settings inside the script before using it in production.
-
-### Account Lockout Report
-
-```powershell
-.\Get-AccountLockoutReport.ps1
-.\Get-AccountLockoutReport.ps1 -TempPath "D:\temp" -SharedPath "\\fileserver\Reports\Lockouts" -LookbackMilliseconds 86400000
-```
-
-The script checks locked accounts and searches Event ID 4740 on the PDC Emulator to identify likely source computers.
-
-### GPO Inventory
-
-```powershell
-.\Get-GPOInventory.ps1 -DomainName "corp.contoso.com"
-.\Get-GPOInventory.ps1 -DomainName "corp.contoso.com" -OutputPath "D:\Reports\GPOInventory.html"
-```
-
-For a deeper inventory that includes configured settings:
-
-```powershell
-.\Get-GPOInventoryWithSettings-DC.ps1 -DomainName "corp.contoso.com"
-.\Get-GPOInventoryWithSettings-DC.ps1 -DomainName "corp.contoso.com" -DomainController "DC01.corp.contoso.com"
-.\Get-GPOInventoryWithSettings-DC.ps1 -DomainName "corp.contoso.com" -SaveGpoReportXmlFolder "C:\temp\GPOXml"
-```
-
-### Insecure LDAP Bind Review
-
-```powershell
-.\Get-InsecureLDAPBinds.ps1
-.\Get-InsecureLDAPBinds.ps1 -Hours 72
-```
-
-This script reads Directory Service Event ID 2889 and is useful before enforcing LDAP signing policies.
-
-### Domain Controller Port Health
-
-```powershell
-.\Test-DCPortHealth.ps1
-.\Test-DCPortHealth.ps1 -TimeoutSeconds 5 -ExportPath "C:\temp\DCPortHealth.csv"
-```
-
-The default port list includes Kerberos, DNS, RPC, LDAP, SMB, LDAPS, Global Catalog, and RDP.
-
-### Domain Controller Performance Baseline
-
-```powershell
-.\Enable-DCPerformanceBaseline.ps1
-```
-
-This script creates a `logman` Data Collector Set named `DC_Baseline_Monitoring` on each domain controller and stores logs under:
-
-```text
-C:\PerfLogs\DC_Baseline\
-```
+---
 
 ## Safety Notes
 
-- Review each script before running it in production.
-- Test in a lab or pilot domain before broad deployment.
-- Confirm output paths, shared paths, and email settings before scheduled use.
-- The inventory and reporting scripts are designed for read-only assessment unless noted otherwise.
-- `Enable-DCPerformanceBaseline.ps1` creates and starts a Data Collector Set on domain controllers.
-- Port checks are TCP reachability checks, not a full vulnerability scan.
-- GPO setting inventory does not calculate Resultant Set of Policy for a specific user or computer.
+- Review each script before running in production.
+- Test in a lab or pilot domain first.
+- All Active Directory scripts are read-only unless explicitly noted.
+- `Enable-DCPerformanceBaseline.ps1` creates a Data Collector Set on domain controllers.
+- Port checks are TCP reachability tests only — not a vulnerability scan.
+- GPO setting inventory does not calculate RSOP for specific users or computers.
+
+---
 
 ## Troubleshooting
 
-If a script fails, check the most common causes first:
+| Symptom | Check |
+|---------|-------|
+| Module not found | Run as Administrator; `Install-WindowsFeature RSAT-AD-PowerShell` |
+| Access denied on remote DCs | Confirm Domain Admin rights or equivalent delegated permissions |
+| WMI failures | Ensure DCOM/WMI firewall exceptions are open; WinRM not required for WMI scripts |
+| Empty output / no events | Increase `-Hours` or `-LookbackMilliseconds`; confirm audit policy logs the target event IDs |
+| Entra Connect script fails | Must run on the Entra Connect server or have WinRM access to it |
 
-- PowerShell was not started as Administrator.
-- ActiveDirectory or GroupPolicy module is missing.
-- The account does not have permission to query AD, GPOs, remote event logs, or WMI/DCOM.
-- Firewall rules block RPC, SMB, LDAP, WinRM, or required AD ports.
-- Output folders or network shares do not exist or are not writable.
-- The selected domain controller is unavailable or cannot be resolved by DNS.
+---
+
+## Author
+
+**K Shankar R Karanth** — Active Directory & Hybrid Identity Engineer  
+[karanth.ovh](https://karanth.ovh) · [LinkedIn](https://www.linkedin.com/in/karanth-shankar/)
+
+---
 
 ## Disclaimer
 
-Use these scripts at your own risk. They are provided as operational examples and should be reviewed, tested, and adjusted for your environment before production use.
+Use these scripts at your own risk. Provided as operational examples — review, test, and adjust for your environment before production use.
