@@ -36,6 +36,19 @@ Install-Module ADOpsKit
 
 ---
 
+## Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| **1.1.2** | 2026-06-28 | Fix `Register-ADOpsKitScheduledTasks` — ambiguous parameter set error when registering tasks (`-Principal` and `-Password` conflict on `Register-ScheduledTask`) |
+| **1.1.1** | 2026-06-28 | Fix `Test-DCPortHealth` — service names showing as blank due to integer key lookup on ordered hashtable |
+| **1.1.0** | 2026-06-28 | All functions default output to `C:\ADOpsKit\Reports\<FunctionName>\` with dated filenames. Added `Register-ADOpsKitScheduledTasks` interactive scheduler wizard. Added `Get-Help about_ADOpsKit` help file |
+| **1.0.1** | 2026-06-27 | Initial PSGallery publish — 10 functions, PSScriptAnalyzer CI, `Get-ADReplicationTopologyDiagram` added |
+
+Full changelog: [CHANGELOG.md](CHANGELOG.md)
+
+---
+
 ## Repository Structure
 
 ```

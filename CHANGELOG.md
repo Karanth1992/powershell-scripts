@@ -3,6 +3,44 @@
 All notable changes to this repository are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+---
+
+## ADOpsKit Module
+
+### [1.1.2] – 2026-06-28
+
+#### Fixed
+- `Register-ADOpsKitScheduledTasks` — `AmbiguousParameterSet` error when registering tasks. Root cause: `-Principal` and `-Password` belong to mutually exclusive parameter sets on `Register-ScheduledTask`. Fixed by replacing `New-ScheduledTaskPrincipal` with `-User`, `-Password`, and `-RunLevel` parameters directly on `Register-ScheduledTask`.
+
+### [1.1.1] – 2026-06-28
+
+#### Fixed
+- `Test-DCPortHealth` — service names displayed as blank next to each port. Root cause: iterating `.Keys` on an `[ordered]` hashtable with integer keys causes PowerShell to treat the key as a positional index rather than a key lookup, returning `$null`. Fixed by switching to `.GetEnumerator()`.
+- PSScriptAnalyzer CI — added `PSAvoidUsingPlainTextForPassword` exclusion for `Register-ADOpsKitScheduledTasks`. The `Register-ScheduledTask` Windows API only accepts plain-text passwords, making `SecureString` not applicable here.
+
+### [1.1.0] – 2026-06-28
+
+#### Added
+- All 9 report-generating functions now default output to `C:\ADOpsKit\Reports\<FunctionName>\` with `yyyy-MM-dd_` prefixed filenames. Directories are auto-created on first run.
+- `Register-ADOpsKitScheduledTasks` — interactive wizard to schedule any combination of ADOpsKit functions as Windows Scheduled Tasks. Prompts for service account, domain, function selection, frequency (daily/weekly), and run time. Registers tasks under `\ADOpsKit\` in Task Scheduler with transcript logging to `C:\ADOpsKit\Reports\Logs\`.
+- `en-US\about_ADOpsKit.help.txt` — module help file accessible via `Get-Help about_ADOpsKit`.
+
+#### Changed
+- Override output path on any function using `-OutputPath` or `-OutputFolder`.
+
+### [1.0.1] – 2026-06-27
+
+#### Added
+- Initial release to PowerShell Gallery.
+- 10 exported functions: `Get-ADReplicationTopologyDiagram`, `Get-ADForestHealth`, `Test-DCPortHealth`, `Get-AccountLockoutReport`, `Get-InsecureLDAPBinds`, `Get-GPOInventory`, `Get-GPOInventoryWithSettings`, `Get-ADArchitectureAssessment`, `Enable-DCPerformanceBaseline`, `Get-EntraConnectSyncStatus`.
+- `Private\Helpers.ps1` — shared internal helpers (TCP port test, LDAP searcher, XML escaping).
+- PSScriptAnalyzer GitHub Actions CI workflow scoped to `ADOpsKit/`.
+- `.pssa.psd1` with justified rule exclusions for AD automation patterns.
+
+---
+
+## Repository
+
 ## [2.0.0] – 2026-06-27
 
 ### Added
