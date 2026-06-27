@@ -11,7 +11,7 @@
 RootModule = 'ADOpsKit.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.1.0'
+ModuleVersion = '1.1.1'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -118,7 +118,7 @@ PrivateData = @{
         # IconUri = ''
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'v1.1.0 — Default output paths set to C:\ADOpsKit\Reports\<FunctionName>\. Added Register-ADOpsKitScheduledTasks interactive wizard.'
+        ReleaseNotes = 'v1.1.1 — Fix Test-DCPortHealth service name display (null ref on ordered hashtable integer keys).'
 
     } # End of PSData hashtable
 
