@@ -93,9 +93,9 @@ function Get-AccountLockoutReport {
     # ============ EMAIL CONFIGURATION ============
     # Update these before enabling email reporting
 
-    $emailFrom = 'ad.monitoring@example.com'
-    $emailTo   = 'domainadmins@example.com'
-    $emailSmtp = 'smtp.example.com'
+    # $emailFrom = 'ad.monitoring@example.com'
+    # $emailTo   = 'domainadmins@example.com'
+    # $emailSmtp = 'smtp.example.com'
 
     # ============ FILE PATHS ============
 

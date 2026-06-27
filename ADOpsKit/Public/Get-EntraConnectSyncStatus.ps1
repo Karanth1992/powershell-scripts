@@ -97,7 +97,7 @@ function Get-EntraConnectSyncStatus {
             $pwdSync = Get-ADSyncAADPasswordSyncConfiguration -SourceConnector (
                 $connectors | Where-Object Type -eq 'AD' | Select-Object -First 1 -ExpandProperty ConnectorName
             )
-        } catch { }
+        } catch { <# Password sync not configured — skip #> }
 
         [PSCustomObject]@{
             Version              = $version

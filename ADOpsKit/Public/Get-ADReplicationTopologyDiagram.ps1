@@ -192,7 +192,7 @@ function Get-ADReplicationTopologyDiagram {
                 $addrs = [System.Net.Dns]::GetHostAddresses($fqdn) |
                          Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork }
                 if ($addrs) { $ipv4 = $addrs[0].IPAddressToString }
-            } catch { }
+            } catch { <# DNS lookup failed — IP stays empty #> }
 
             # OS version from computer object in domain NC
             $os = 'Unknown'
@@ -206,7 +206,7 @@ function Get-ADReplicationTopologyDiagram {
                 if ($compResult -and $compResult.Properties['operatingsystem'].Count -gt 0) {
                     $os = [string]$compResult.Properties['operatingsystem'][0]
                 }
-            } catch { }
+            } catch { <# LDAP query failed — OS stays Unknown #> }
 
             # FSMO roles this DC holds
             $fsmoRoles = @()
@@ -270,11 +270,11 @@ function Get-ADReplicationTopologyDiagram {
 
             $lastSuccess = $null
             if ($row.'Last Success Time' -and $row.'Last Success Time' -ne '') {
-                try { $lastSuccess = [datetime]$row.'Last Success Time' } catch { }
+                try { $lastSuccess = [datetime]$row.'Last Success Time' } catch { <# unparseable date #> }
             }
             $lastAttempt = $null
             if ($row.'Last Failure Time' -and $row.'Last Failure Time' -ne '') {
-                try { $lastAttempt = [datetime]$row.'Last Failure Time' } catch { }
+                try { $lastAttempt = [datetime]$row.'Last Failure Time' } catch { <# unparseable date #> }
             }
             if (-not $lastAttempt -and $lastSuccess) { $lastAttempt = $lastSuccess }
 

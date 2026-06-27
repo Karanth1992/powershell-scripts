@@ -53,21 +53,19 @@ function Get-ADForestHealth {
     # ============ CONFIGURATION ============
 
     $now              = Get-Date
-    $date             = $now.ToShortDateString()
     $reportTime       = $now
     $allDomains       = (Get-ADForest).Domains
-    $reportEmailSubject = "Active Directory Health Check for $($allDomains -join ', ')"
 
     # ============ EMAIL CONFIGURATION ============
     # Update these values before enabling email reporting
 
-    $smtpSettings = @{
-        To         = 'recipient@example.com'
-        From       = 'sender@example.com'
-        Subject    = "$reportEmailSubject - $date"
-        SmtpServer = 'smtp.example.com'
-        Port       = 25
-    }
+    # $smtpSettings = @{
+    #     To         = 'recipient@example.com'
+    #     From       = 'sender@example.com'
+    #     Subject    = "$reportEmailSubject - $date"
+    #     SmtpServer = 'smtp.example.com'
+    #     Port       = 25
+    # }
 
     # ============ OUTPUT CONFIGURATION ============
 
