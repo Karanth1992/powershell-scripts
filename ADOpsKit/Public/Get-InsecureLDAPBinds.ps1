@@ -1,0 +1,142 @@
+function Get-InsecureLDAPBinds {
+<#
+.SYNOPSIS
+    Detects insecure LDAP binds across all domain controllers.
+
+.DESCRIPTION
+    Queries Event ID 2889 from the Directory Service log on every
+    domain controller in the domain. Reports unsigned and simple LDAP
+    binds which are a security risk and should be remediated before
+    enforcing LDAP signing via Group Policy.
+
+    Performs ping and RPC port 135 connectivity checks before querying
+    each DC to avoid hanging on unreachable hosts.
+
+    Output is saved as a dated CSV to the OutputFolder parameter path.
+
+.PARAMETER Hours
+    How many hours back to search for events. Defaults to 24.
+
+.PARAMETER OutputFolder
+    Folder where the CSV output file is written.
+    Defaults to $env:TEMP.
+
+.EXAMPLE
+    Get-InsecureLDAPBinds
+    Checks the last 24 hours across all DCs.
+
+.EXAMPLE
+    Get-InsecureLDAPBinds -Hours 72
+    Checks the last 72 hours across all DCs.
+
+.EXAMPLE
+    Get-InsecureLDAPBinds -Hours 48 -OutputFolder "C:\Reports\LDAP"
+    Checks the last 48 hours and writes the CSV to a custom folder.
+
+.NOTES
+    Author:   K Shankar R Karanth
+    Website:  https://karanth.ovh
+    Version:  1.0
+    Run as Domain Admin or equivalent with WMI access to all DCs.
+#>
+
+    [CmdletBinding()]
+    Param (
+        [Parameter(Mandatory = $false, Position = 0)]
+        [Int]$Hours = 24,
+
+        [string]$OutputFolder = $env:TEMP
+    )
+
+    $dateString = Get-Date -Format "yyyy-MM-dd"
+    $since      = (Get-Date).AddHours(-$Hours)
+
+    if (-not (Test-Path -Path $OutputFolder)) {
+        New-Item -ItemType Directory -Path $OutputFolder | Out-Null
+    }
+
+    $DomainControllers    = Get-ADDomainController -Filter *
+    $AllInsecureLDAPBinds = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+    foreach ($DC in $DomainControllers) {
+        $ComputerName = $DC.HostName
+        Write-Host "Checking connectivity to $ComputerName..."
+
+        if (-not (Test-Connection -ComputerName $ComputerName -Count 1 -Quiet -ErrorAction SilentlyContinue)) {
+            Write-Warning "$ComputerName is not responding to ping. Skipping."
+            continue
+        }
+
+        if (-not (Test-ADOKTcpPort -ComputerName $ComputerName -Port 135 -TimeoutSeconds 15)) {
+            Write-Warning "Cannot connect to RPC port 135 on $ComputerName. Skipping."
+            continue
+        }
+
+        Write-Host "Connectivity OK for $ComputerName. Querying event logs via WMI..."
+
+        try {
+            $wmiQuery = "SELECT * FROM Win32_NTLogEvent WHERE Logfile='Directory Service' AND EventCode=2889"
+            $Events   = Get-WmiObject -ComputerName $ComputerName -Query $wmiQuery -ErrorAction Stop
+
+            $FilteredEvents = $Events | Where-Object {
+                $dt = [System.Management.ManagementDateTimeConverter]::ToDateTime($_.TimeGenerated)
+                $dt -ge $since
+            }
+        }
+        catch {
+            Write-Warning "WMI query failed for $ComputerName : $_"
+            continue
+        }
+
+        foreach ($Event in $FilteredEvents) {
+            $Client      = $Event.InsertionStrings[0]
+            $User        = $Event.InsertionStrings[1]
+            $BindTypeRaw = $Event.InsertionStrings[2]
+
+            $IPAddress = $null
+            $Port      = $null
+
+            if ($Client -and $Client.LastIndexOf(":") -gt 0) {
+                $IPAddress = $Client.Substring(0, $Client.LastIndexOf(":"))
+                $Port      = $Client.Substring($Client.LastIndexOf(":") + 1)
+            }
+
+            $BindType = switch ($BindTypeRaw) {
+                "0"     { "Unsigned" }
+                "1"     { "Simple"   }
+                default { "Unknown"  }
+            }
+
+            $ClientName = $null
+            if ($IPAddress) {
+                try {
+                    $ClientName = ([System.Net.Dns]::GetHostEntry($IPAddress)).HostName
+                }
+                catch {
+                    $ClientName = $null
+                }
+            }
+
+            $AllInsecureLDAPBinds.Add([PSCustomObject]@{
+                DCName     = $ComputerName
+                ClientName = $ClientName
+                IPAddress  = $IPAddress
+                Port       = $Port
+                User       = $User
+                BindType   = $BindType
+            })
+        }
+
+        Write-Host "Events collected from $ComputerName."
+    }
+
+    $outputFile = Join-Path $OutputFolder "InsecureLDAPBinds_$dateString.csv"
+
+    if ($AllInsecureLDAPBinds.Count -gt 0) {
+        $AllInsecureLDAPBinds | Export-Csv -NoTypeInformation -Path $outputFile
+        Write-Host "$($AllInsecureLDAPBinds.Count) record(s) saved to $outputFile"
+    }
+    else {
+        Write-Host "No insecure LDAP binds found in the last $Hours hours."
+    }
+}
