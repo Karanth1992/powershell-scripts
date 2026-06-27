@@ -397,89 +397,99 @@ foreach ($dc in $allDCs) {
 
 #endregion
 
-#region -- build SVG topology diagram -----------------------------------------
+#region -- build SVG topology diagram (circular / star layout) ----------------
 
 Write-Step "Building SVG replication topology diagram ..."
 
-# --- Layout constants (pixels) ---
-$dcW       = 210   # DC box width
-$dcH       = 62    # DC box height
-$dcPadX    = 18    # horizontal padding inside site frame
-$dcPadTop  = 36    # space for site label inside frame
-$dcGapY    = 14    # gap between DC boxes vertically
-$sitePadB  = 16    # bottom padding inside site frame
-$siteGapX  = 90    # horizontal gap between site columns
-$siteGapY  = 90    # vertical gap between site rows
-$maxCols   = 3     # site columns before wrapping
-$margin    = 40    # canvas margin
-
-# --- Per-site box dimensions ---
-$sortedSites = @($siteGroups.Keys | Sort-Object)
-$siteW = $dcW + 2 * $dcPadX
-
-# --- Assign grid positions to sites ---
-$siteInfo = [ordered]@{}
-$col = 0 ; $row = 0
-foreach ($site in $sortedSites) {
-    $dcCount = $siteGroups[$site].Count
-    $h = $dcPadTop + $dcCount * $dcH + [Math]::Max(0, $dcCount - 1) * $dcGapY + $sitePadB
-    $siteInfo[$site] = @{ Col = $col; Row = $row; H = $h; W = $siteW; DCs = $siteGroups[$site] }
-    $col++
-    if ($col -ge $maxCols) { $col = 0; $row++ }
-}
-
-# --- Compute pixel X/Y of each site (align rows by max height in that row) ---
-$rowMaxH = @{}
-foreach ($s in $siteInfo.Keys) {
-    $r = $siteInfo[$s].Row
-    if (-not $rowMaxH.ContainsKey($r) -or $siteInfo[$s].H -gt $rowMaxH[$r]) { $rowMaxH[$r] = $siteInfo[$s].H }
-}
-$rowY = @{} ; $cumY = $margin
-foreach ($r in ($rowMaxH.Keys | Sort-Object)) { $rowY[$r] = $cumY ; $cumY += $rowMaxH[$r] + $siteGapY }
-
-foreach ($s in $siteInfo.Keys) {
-    $siteInfo[$s].X = $margin + $siteInfo[$s].Col * ($siteW + $siteGapX)
-    $siteInfo[$s].Y = $rowY[$siteInfo[$s].Row]
-}
-
-# --- Build DC centre-point lookup ---
-$dcPos = @{}
-foreach ($s in $siteInfo.Keys) {
-    $si = $siteInfo[$s]
-    for ($i = 0; $i -lt $si.DCs.Count; $i++) {
-        $dc = $si.DCs[$i]
-        $x1 = $si.X + $dcPadX
-        $y1 = $si.Y + $dcPadTop + $i * ($dcH + $dcGapY)
-        $dcPos[$dc.HostName] = @{
-            X1 = $x1 ; Y1 = $y1
-            CX = $x1 + $dcW / 2 ; CY = $y1 + $dcH / 2
-            DC = $dc
-        }
-    }
-}
-
-# --- Canvas size ---
-$canvasW = $margin
-$canvasH = $margin
-foreach ($s in $siteInfo.Keys) {
-    $si = $siteInfo[$s]
-    $rx = $si.X + $si.W + $margin
-    $ry = $si.Y + $si.H + $margin
-    if ($rx -gt $canvasW) { $canvasW = $rx }
-    if ($ry -gt $canvasH) { $canvasH = $ry }
-}
-# Add room for legend at the bottom
-$legendY  = $canvasH + 10
-$canvasH  = $legendY + 80
+# --- DC box dimensions ---
+$dcW    = 210
+$dcH    = 68    # slightly taller to fit site label inside the box
+$margin = 60
 
 # --- SVG helpers ---
 function Esc-Xml { param([string]$s) $s -replace '&','&amp;' -replace '<','&lt;' -replace '>','&gt;' -replace '"','&quot;' }
 
-# --- Build SVG string ---
+# -----------------------------------------------------------------------
+# Identify the PDC emulator - it goes in the centre of the diagram.
+# Fall back to the first DC if no PDC role is found.
+# -----------------------------------------------------------------------
+$pdcDC    = $allDCs | Where-Object { $_.FsmoRoles -contains 'PDCEmulator' } | Select-Object -First 1
+if (-not $pdcDC) { $pdcDC = $allDCs | Select-Object -First 1 }
+$otherDCs = @($allDCs | Where-Object { $_.HostName -ne $pdcDC.HostName } | Sort-Object { $_.Site }, { $_.Name })
+
+# -----------------------------------------------------------------------
+# Calculate the orbit radius so the outer DC boxes never overlap each other
+# or the centre box.
+# Minimum spacing between adjacent outer boxes = dcW + 30 px gap.
+# Circumference needed = n * (dcW + 30).  radius = circ / (2*pi)
+# -----------------------------------------------------------------------
+$n = $otherDCs.Count
+if ($n -gt 0) {
+    $minRadius = [int]([Math]::Max(260, ($n * ($dcW + 40)) / (2 * [Math]::PI)))
+} else {
+    $minRadius = 0
+}
+
+# Canvas: the centre point sits at (cx, cy); we need room on all four sides
+# for the outer boxes plus a margin.
+$cx = $margin + $minRadius + [int]($dcW / 2)
+$cy = $margin + $minRadius + [int]($dcH / 2)
+$canvasW  = $cx * 2
+$legendY  = $cy * 2 + $margin
+$canvasH  = $legendY + 70
+
+# -----------------------------------------------------------------------
+# Compute pixel positions
+# -----------------------------------------------------------------------
+$dcPos = @{}
+
+# PDC at the centre
+$dcPos[$pdcDC.HostName] = @{
+    X1 = $cx - [int]($dcW / 2)
+    Y1 = $cy - [int]($dcH / 2)
+    CX = $cx ; CY = $cy
+    DC = $pdcDC
+}
+
+# Outer DCs equally spaced around the orbit, starting at the top (-90 deg)
+for ($i = 0; $i -lt $n; $i++) {
+    $angleDeg = -90 + ($i * 360 / $n)
+    $angleRad = $angleDeg * [Math]::PI / 180
+    $ocx = [int]($cx + $minRadius * [Math]::Cos($angleRad))
+    $ocy = [int]($cy + $minRadius * [Math]::Sin($angleRad))
+    $dc  = $otherDCs[$i]
+    $dcPos[$dc.HostName] = @{
+        X1 = $ocx - [int]($dcW / 2)
+        Y1 = $ocy - [int]($dcH / 2)
+        CX = $ocx ; CY = $ocy
+        DC = $dc
+    }
+}
+
+# -----------------------------------------------------------------------
+# Collect site colour palette (cycle through a set of distinct hues)
+# -----------------------------------------------------------------------
+$sitePalette = @(
+    @{ Fill='#0c2a4a'; Stroke='#1d6fa4' },   # blue
+    @{ Fill='#1a2e1a'; Stroke='#3a8a3a' },   # green
+    @{ Fill='#2e1a2e'; Stroke='#9a3a9a' },   # purple
+    @{ Fill='#2e2200'; Stroke='#b87a00' },   # amber
+    @{ Fill='#002e2e'; Stroke='#009a9a' },   # teal
+    @{ Fill='#2e0a00'; Stroke='#c04000' }    # orange
+)
+$siteColorMap = @{}
+$paletteIdx   = 0
+foreach ($site in ($allDCs | ForEach-Object { $_.Site } | Select-Object -Unique | Sort-Object)) {
+    $siteColorMap[$site] = $sitePalette[$paletteIdx % $sitePalette.Count]
+    $paletteIdx++
+}
+
+# -----------------------------------------------------------------------
+# Build SVG
+# -----------------------------------------------------------------------
 $svg = [System.Text.StringBuilder]::new()
 $null = $svg.AppendLine("<svg xmlns='http://www.w3.org/2000/svg' width='$canvasW' height='$canvasH' font-family='Segoe UI,Arial,sans-serif'>")
 
-# Defs: arrowhead markers
 $null = $svg.AppendLine(@"
 <defs>
   <marker id='arr' markerWidth='10' markerHeight='7' refX='9' refY='3.5' orient='auto'>
@@ -488,66 +498,34 @@ $null = $svg.AppendLine(@"
   <marker id='arrFail' markerWidth='10' markerHeight='7' refX='9' refY='3.5' orient='auto'>
     <polygon points='0 0, 10 3.5, 0 7' fill='#f87171'/>
   </marker>
-  <filter id='shadow' x='-10%' y='-10%' width='120%' height='120%'>
-    <feDropShadow dx='2' dy='2' stdDeviation='3' flood-color='#00000055'/>
+  <filter id='glow'>
+    <feGaussianBlur stdDeviation='3' result='blur'/>
+    <feMerge><feMergeNode in='blur'/><feMergeNode in='SourceGraphic'/></feMerge>
+  </filter>
+  <filter id='shadow' x='-15%' y='-15%' width='130%' height='130%'>
+    <feDropShadow dx='2' dy='3' stdDeviation='4' flood-color='#000000aa'/>
   </filter>
 </defs>
 "@)
 
 # Background
-$null = $svg.AppendLine("<rect width='$canvasW' height='$canvasH' fill='#0f172a'/>")
+$null = $svg.AppendLine("<rect width='$canvasW' height='$canvasH' fill='#0a0f1e'/>")
 
-# --- Draw site frames ---
-foreach ($s in $siteInfo.Keys) {
-    $si   = $siteInfo[$s]
-    $x    = $si.X ; $y = $si.Y ; $w = $si.W ; $h = $si.H
-    $sEsc = Esc-Xml $s
-    $null = $svg.AppendLine("<rect x='$x' y='$y' width='$w' height='$h' rx='10' fill='#1e293b' stroke='#334155' stroke-width='2' filter='url(#shadow)'/>")
-    $null = $svg.AppendLine("<text x='$($x + $w/2)' y='$($y + 22)' text-anchor='middle' font-size='13' font-weight='700' fill='#7dd3fc'>Site: $sEsc</text>")
+# Subtle orbit ring (visual guide)
+if ($n -gt 0) {
+    $null = $svg.AppendLine("<circle cx='$cx' cy='$cy' r='$minRadius' fill='none' stroke='#1e293b' stroke-width='1' stroke-dasharray='6,6'/>")
 }
 
-# --- Draw DC boxes ---
-foreach ($hn in $dcPos.Keys) {
-    $p  = $dcPos[$hn]
-    $dc = $p.DC
-    $x1 = $p.X1 ; $y1 = $p.Y1
-    $hasFail = $dc.ReplFailures -gt 0
-
-    $fill   = if ($hasFail) { '#7f1d1d' } else { '#0f3460' }
-    $stroke = if ($hasFail) { '#f87171' } else { '#38bdf8' }
-
-    $null = $svg.AppendLine("<rect x='$x1' y='$y1' width='$dcW' height='$dcH' rx='6' fill='$fill' stroke='$stroke' stroke-width='1.5'/>")
-
-    # Hostname (line 1)
-    $name = Esc-Xml $dc.Name
-    $null = $svg.AppendLine("<text x='$($x1 + $dcW/2)' y='$($y1 + 18)' text-anchor='middle' font-size='12' font-weight='700' fill='#e2e8f0'>$name</text>")
-
-    # IP (line 2)
-    $ip = Esc-Xml $dc.IPv4
-    $null = $svg.AppendLine("<text x='$($x1 + $dcW/2)' y='$($y1 + 33)' text-anchor='middle' font-size='10' fill='#94a3b8'>$ip</text>")
-
-    # Badges (line 3)
-    $badges = @()
-    if ($dc.IsGC)             { $badges += 'GC' }
-    if ($dc.IsRODC)           { $badges += 'RODC' }
-    if ($dc.FsmoRoles.Count)  { $badges += ($dc.FsmoRoles | ForEach-Object { ($_ -replace 'Master','').Trim() }) }
-    if ($dc.ReplFailures -gt 0) { $badges += "FAIL:$($dc.ReplFailures)" }
-
-    if ($badges) {
-        $badgeText = Esc-Xml ($badges -join '  ')
-        $null = $svg.AppendLine("<text x='$($x1 + $dcW/2)' y='$($y1 + 52)' text-anchor='middle' font-size='9' fill='$stroke'>$badgeText</text>")
-    }
-}
-
-# --- Deduplicate replication edges to one per directed DC pair,
-#     keeping the worst (highest) failure count across all naming contexts ---
+# -----------------------------------------------------------------------
+# Deduplicate replication edges (one per directed DC pair, worst failures)
+# -----------------------------------------------------------------------
 $uniqueEdgeMap = @{}
 foreach ($edge in $replEdges) {
     $srcH = $edge.Source ; $dstH = $edge.PartnerFQDN
     if (-not $srcH -or -not $dstH) { continue }
     $key = "$srcH||$dstH"
     if (-not $uniqueEdgeMap.ContainsKey($key)) {
-        $uniqueEdgeMap[$key] = @{} + $edge   # shallow copy of the hashtable
+        $uniqueEdgeMap[$key] = @{} + $edge
     } else {
         if ($edge.ConsecFailures -gt $uniqueEdgeMap[$key].ConsecFailures) {
             $uniqueEdgeMap[$key].ConsecFailures = $edge.ConsecFailures
@@ -556,53 +534,126 @@ foreach ($edge in $replEdges) {
     }
 }
 
-# --- Draw replication arrows (one per directed pair) ---
+# -----------------------------------------------------------------------
+# Draw replication arrows FIRST (so they appear behind the DC boxes)
+# -----------------------------------------------------------------------
 $drawnPairs = [System.Collections.Generic.HashSet[string]]::new()
 
 foreach ($edge in $uniqueEdgeMap.Values) {
     $srcH = $edge.Source ; $dstH = $edge.PartnerFQDN
     if (-not $dcPos.ContainsKey($srcH) -or -not $dcPos.ContainsKey($dstH)) { continue }
 
-    # Track which undirected pairs have already had one direction drawn
     $pairKey = (($srcH, $dstH | Sort-Object) -join '|')
-    $isBidirectional = $drawnPairs.Contains($pairKey)
+    $isReturn = $drawnPairs.Contains($pairKey)   # true = second direction of a bidirectional pair
     $null = $drawnPairs.Add($pairKey)
 
-    $src  = $dcPos[$srcH] ; $dst = $dcPos[$dstH]
+    $src = $dcPos[$srcH] ; $dst = $dcPos[$dstH]
     $hasFail   = $edge.ConsecFailures -gt 0
     $arrowId   = if ($hasFail) { 'arrFail' } else { 'arr' }
     $lineColor = if ($hasFail) { '#f87171' } else { '#38bdf8' }
     $dashStyle = if ($hasFail) { "stroke-dasharray='6,4'" } else { '' }
 
-    $x1 = [int]$src.CX ; $y1 = [int]$src.CY
-    $x2 = [int]$dst.CX ; $y2 = [int]$dst.CY
+    $ax1 = [int]$src.CX ; $ay1 = [int]$src.CY
+    $ax2 = [int]$dst.CX ; $ay2 = [int]$dst.CY
 
-    # Bow the curve to one side; flip side for the return arrow so they don't overlap
-    $mx  = ($x1 + $x2) / 2 ; $my = ($y1 + $y2) / 2
-    $dx  = $x2 - $x1       ; $dy  = $y2 - $y1
-    $len = [Math]::Sqrt($dx * $dx + $dy * $dy) ; if ($len -lt 1) { $len = 1 }
-    $bow = [Math]::Max(50, $len * 0.4)
-    $side = if ($isBidirectional) { -1 } else { 1 }
-    $cpx = [int]($mx - $dy / $len * $bow * $side)
-    $cpy = [int]($my + $dx / $len * $bow * $side)
+    # Offset the two directions of a bidirectional pair to avoid overlap.
+    # Bow size scales with distance; flip perpendicular side for the return arrow.
+    $mdx = $ax2 - $ax1 ; $mdy = $ay2 - $ay1
+    $mlen = [Math]::Sqrt($mdx*$mdx + $mdy*$mdy) ; if ($mlen -lt 1) { $mlen = 1 }
+    $bow  = [Math]::Max(55, $mlen * 0.38)
+    $side = if ($isReturn) { 1 } else { -1 }
+    $mcpx = [int](($ax1+$ax2)/2 - $mdy/$mlen * $bow * $side)
+    $mcpy = [int](($ay1+$ay2)/2 + $mdx/$mlen * $bow * $side)
 
-    $null = $svg.AppendLine("<path d='M $x1 $y1 Q $cpx $cpy $x2 $y2' fill='none' stroke='$lineColor' stroke-width='1.8' $dashStyle marker-end='url(#$arrowId)' opacity='0.85'/>")
+    $null = $svg.AppendLine("<path d='M $ax1 $ay1 Q $mcpx $mcpy $ax2 $ay2' fill='none' stroke='$lineColor' stroke-width='2' $dashStyle marker-end='url(#$arrowId)' opacity='0.8'/>")
 }
 
-# --- Legend ---
-$lx = $margin ; $ly = $legendY + 10
-$null = $svg.AppendLine("<text x='$lx' y='$($ly - 4)' font-size='11' font-weight='700' fill='#64748b'>Legend</text>")
-$null = $svg.AppendLine("<rect x='$lx' y='$ly' width='16' height='12' rx='2' fill='#0f3460' stroke='#38bdf8' stroke-width='1.5'/>")
-$null = $svg.AppendLine("<text x='$($lx+22)' y='$($ly+10)' font-size='10' fill='#94a3b8'>Domain Controller</text>")
-$null = $svg.AppendLine("<rect x='$($lx+160)' y='$ly' width='16' height='12' rx='2' fill='#7f1d1d' stroke='#f87171' stroke-width='1.5'/>")
-$null = $svg.AppendLine("<text x='$($lx+182)' y='$($ly+10)' font-size='10' fill='#94a3b8'>Replication Failure</text>")
-$null = $svg.AppendLine("<line x1='$($lx+350)' y1='$($ly+6)' x2='$($lx+380)' y2='$($ly+6)' stroke='#38bdf8' stroke-width='1.8' marker-end='url(#arr)'/>")
-$null = $svg.AppendLine("<text x='$($lx+386)' y='$($ly+10)' font-size='10' fill='#94a3b8'>Replication link (OK)</text>")
-$null = $svg.AppendLine("<line x1='$($lx+560)' y1='$($ly+6)' x2='$($lx+590)' y2='$($ly+6)' stroke='#f87171' stroke-width='1.8' stroke-dasharray='5,3' marker-end='url(#arrFail)'/>")
-$null = $svg.AppendLine("<text x='$($lx+596)' y='$($ly+10)' font-size='10' fill='#94a3b8'>Replication link (FAIL)</text>")
+# -----------------------------------------------------------------------
+# Draw DC boxes ON TOP of the arrows
+# -----------------------------------------------------------------------
+foreach ($hn in $dcPos.Keys) {
+    $p   = $dcPos[$hn]
+    $dc  = $p.DC
+    $x1  = $p.X1 ; $y1 = $p.Y1
+    $isPdc    = ($dc.HostName -eq $pdcDC.HostName)
+    $hasFail  = $dc.ReplFailures -gt 0
+    $siteCol  = $siteColorMap[$dc.Site]
+
+    # Outer site-coloured glow ring around each box
+    $null = $svg.AppendLine("<rect x='$($x1-4)' y='$($y1-4)' width='$($dcW+8)' height='$($dcH+8)' rx='10' fill='$($siteCol.Fill)' stroke='$($siteCol.Stroke)' stroke-width='2' opacity='0.6'/>")
+
+    # Main DC box
+    if ($isPdc) {
+        # PDC: gold border, slightly larger shadow
+        $fill   = if ($hasFail) { '#4a1010' } else { '#1a1a3e' }
+        $stroke = if ($hasFail) { '#f87171' } else { '#fbbf24' }
+        $null = $svg.AppendLine("<rect x='$x1' y='$y1' width='$dcW' height='$dcH' rx='7' fill='$fill' stroke='$stroke' stroke-width='2.5' filter='url(#shadow)'/>")
+    } else {
+        $fill   = if ($hasFail) { '#7f1d1d' } else { '#0f2044' }
+        $stroke = if ($hasFail) { '#f87171' } else { '#38bdf8' }
+        $null = $svg.AppendLine("<rect x='$x1' y='$y1' width='$dcW' height='$dcH' rx='7' fill='$fill' stroke='$stroke' stroke-width='1.5' filter='url(#shadow)'/>")
+    }
+
+    # Site name banner at top of box
+    $siteEsc = Esc-Xml $dc.Site
+    $null = $svg.AppendLine("<text x='$($x1 + $dcW/2)' y='$($y1 + 13)' text-anchor='middle' font-size='9' fill='$($siteCol.Stroke)' letter-spacing='0.5'>$siteEsc</text>")
+
+    # Thin separator line under site label
+    $null = $svg.AppendLine("<line x1='$($x1+8)' y1='$($y1+17)' x2='$($x1+$dcW-8)' y2='$($y1+17)' stroke='$($siteCol.Stroke)' stroke-width='0.5' opacity='0.5'/>")
+
+    # Hostname
+    $nameCol  = if ($isPdc) { '#fde68a' } else { '#e2e8f0' }
+    $nameEsc  = Esc-Xml $dc.Name
+    $null = $svg.AppendLine("<text x='$($x1 + $dcW/2)' y='$($y1 + 31)' text-anchor='middle' font-size='12' font-weight='700' fill='$nameCol'>$nameEsc</text>")
+
+    # IPv4
+    $ipEsc = Esc-Xml $dc.IPv4
+    $null = $svg.AppendLine("<text x='$($x1 + $dcW/2)' y='$($y1 + 45)' text-anchor='middle' font-size='10' fill='#94a3b8'>$ipEsc</text>")
+
+    # Role / badge line
+    $badges = @()
+    if ($isPdc)               { $badges += 'PDC' }
+    if ($dc.IsGC)             { $badges += 'GC' }
+    if ($dc.IsRODC)           { $badges += 'RODC' }
+    $extraRoles = $dc.FsmoRoles | Where-Object { $_ -ne 'PDCEmulator' } |
+                  ForEach-Object { ($_ -replace 'Master','').Trim() }
+    if ($extraRoles)          { $badges += $extraRoles }
+    if ($dc.ReplFailures -gt 0) { $badges += "FAIL:$($dc.ReplFailures)" }
+
+    if ($badges) {
+        $badgeColor = if ($hasFail) { '#f87171' } elseif ($isPdc) { '#fbbf24' } else { '#38bdf8' }
+        $badgeEsc   = Esc-Xml ($badges -join '  ')
+        $null = $svg.AppendLine("<text x='$($x1 + $dcW/2)' y='$($y1 + 60)' text-anchor='middle' font-size='9' fill='$badgeColor' font-weight='600'>$badgeEsc</text>")
+    }
+}
+
+# -----------------------------------------------------------------------
+# Site legend pills (bottom strip)
+# -----------------------------------------------------------------------
+$null = $svg.AppendLine("<text x='$margin' y='$($legendY + 4)' font-size='11' font-weight='700' fill='#475569'>Sites</text>")
+$pillX = $margin + 40 ; $pillY = $legendY - 6
+foreach ($site in ($siteColorMap.Keys | Sort-Object)) {
+    $col  = $siteColorMap[$site]
+    $sEsc = Esc-Xml $site
+    $tw   = $sEsc.Length * 7 + 24   # approximate pill width
+    $null = $svg.AppendLine("<rect x='$pillX' y='$pillY' width='$tw' height='18' rx='9' fill='$($col.Fill)' stroke='$($col.Stroke)' stroke-width='1.2'/>")
+    $null = $svg.AppendLine("<text x='$($pillX + $tw/2)' y='$($pillY + 12)' text-anchor='middle' font-size='10' fill='$($col.Stroke)'>$sEsc</text>")
+    $pillX += $tw + 10
+}
+
+# Replication link legend
+$rx = $margin ; $ry = $legendY + 20
+$null = $svg.AppendLine("<text x='$rx' y='$($ry + 4)' font-size='11' font-weight='700' fill='#475569'>Links</text>")
+$null = $svg.AppendLine("<line x1='$($rx+44)' y1='$($ry+2)' x2='$($rx+76)' y2='$($ry+2)' stroke='#38bdf8' stroke-width='2' marker-end='url(#arr)'/>")
+$null = $svg.AppendLine("<text x='$($rx+82)' y='$($ry+6)' font-size='10' fill='#94a3b8'>Replication OK</text>")
+$null = $svg.AppendLine("<line x1='$($rx+220)' y1='$($ry+2)' x2='$($rx+252)' y2='$($ry+2)' stroke='#f87171' stroke-width='2' stroke-dasharray='5,3' marker-end='url(#arrFail)'/>")
+$null = $svg.AppendLine("<text x='$($rx+258)' y='$($ry+6)' font-size='10' fill='#94a3b8'>Replication FAIL</text>")
+
+# PDC marker
+$null = $svg.AppendLine("<rect x='$($rx+400)' y='$($ry-6)' width='14' height='14' rx='3' fill='#1a1a3e' stroke='#fbbf24' stroke-width='2'/>")
+$null = $svg.AppendLine("<text x='$($rx+420)' y='$($ry+6)' font-size='10' fill='#94a3b8'>PDC Emulator (centre)</text>")
 
 $null = $svg.AppendLine("</svg>")
-
 $svgDiagram = $svg.ToString()
 
 #endregion
