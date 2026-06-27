@@ -16,7 +16,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
-          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Warning,Error -Settings .pssa.psd1
+          $results = Invoke-ScriptAnalyzer -Path ./ADOpsKit -Recurse -Severity Warning,Error -Settings .pssa.psd1
           if ($results) {
             $results | Format-Table -AutoSize
             exit 1
