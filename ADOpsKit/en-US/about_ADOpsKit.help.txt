@@ -1,0 +1,83 @@
+TOPIC
+    about_ADOpsKit
+
+SHORT DESCRIPTION
+    ADOpsKit is a PowerShell module for Active Directory and Hybrid Identity operations.
+
+LONG DESCRIPTION
+    ADOpsKit packages ten commonly needed Active Directory operations into a single
+    installable module. Functions cover DC health checks, replication topology
+    visualisation, GPO inventory, LDAP security auditing, account lockout tracing,
+    performance baseline deployment, and Entra Connect sync monitoring.
+
+    Most functions work without ADWS (Active Directory Web Services). Core inventory
+    and replication functions use LDAP via System.DirectoryServices and repadmin.exe
+    directly, so they run from any domain-joined machine without WinRM or PS Remoting
+    to every DC.
+
+INSTALLATION
+    Install-Module ADOpsKit -Scope CurrentUser
+
+    On older Windows Server with restricted TLS:
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Install-Module ADOpsKit -Scope CurrentUser
+
+OUTPUT PATHS
+    By default all reports are saved to:
+        C:\ADOpsKit\Reports\<FunctionName>\yyyy-MM-dd_<ReportName>
+
+    Override the path using the -OutputPath or -OutputFolder parameter on any function.
+
+SCHEDULED TASKS
+    Use Register-ADOpsKitScheduledTasks to interactively set up Windows Scheduled
+    Tasks for any combination of ADOpsKit functions. Tasks are registered under the
+    \ADOpsKit\ folder in Task Scheduler.
+
+        Register-ADOpsKitScheduledTasks
+
+FUNCTIONS
+    Get-ADReplicationTopologyDiagram
+        SVG replication topology diagram using LDAP and repadmin. No ADWS required.
+
+    Get-ADForestHealth
+        HTML health report across the forest — DCDiag, disk, CPU, memory, uptime.
+
+    Test-DCPortHealth
+        TCP port check for all critical AD ports across all domain controllers.
+
+    Get-AccountLockoutReport
+        Locked account report with lockout source computers via Event ID 4740.
+
+    Get-InsecureLDAPBinds
+        Detects unsigned and simple LDAP binds via Event ID 2889.
+
+    Get-GPOInventory
+        GPO metadata, links, permissions, status, and WMI filters.
+
+    Get-GPOInventoryWithSettings
+        GPO inventory including configured settings from Get-GPOReport XML.
+
+    Get-ADArchitectureAssessment
+        Full AD inventory — HTML, JSON, and CSV output.
+
+    Enable-DCPerformanceBaseline
+        Deploys logman Data Collector Set on all DCs via WMI.
+
+    Get-EntraConnectSyncStatus
+        Entra Connect health — sync cycle, connector errors, pending exports.
+
+    Register-ADOpsKitScheduledTasks
+        Interactive wizard to register any ADOpsKit function as a scheduled task.
+
+REQUIREMENTS
+    - Windows PowerShell 5.1 or later
+    - Domain Admin rights or equivalent
+    - RSAT-AD-PowerShell for AD module functions
+    - GPMC for GPO functions
+    - repadmin.exe on PATH (included with RSAT and on all DCs)
+    - ADSync module for Get-EntraConnectSyncStatus
+
+LINKS
+    PowerShell Gallery : https://www.powershellgallery.com/packages/ADOpsKit
+    GitHub             : https://github.com/Karanth1992/powershell-scripts
+    Author site        : https://karanth.ovh

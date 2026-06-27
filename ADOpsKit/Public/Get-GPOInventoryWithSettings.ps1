@@ -66,7 +66,7 @@ function Get-GPOInventoryWithSettings {
 
         [string]$DomainController,
 
-        [string]$OutputPath = (Join-Path $env:TEMP 'GPOInventoryWithSettings.html'),
+        [string]$OutputPath = "C:\ADOpsKit\Reports\Get-GPOInventoryWithSettings\$(Get-Date -Format 'yyyy-MM-dd')_GPOInventoryWithSettings.html",
 
         [string]$SaveGpoReportXmlFolder
     )

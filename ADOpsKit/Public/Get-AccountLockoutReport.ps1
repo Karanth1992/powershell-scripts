@@ -47,8 +47,8 @@ function Get-AccountLockoutReport {
 
     [CmdletBinding()]
     param (
-        [string]$TempPath            = $env:TEMP,
-        [string]$SharedPath          = "\\server\AccountLockout",
+        [string]$TempPath            = 'C:\ADOpsKit\Reports\Get-AccountLockoutReport',
+        [string]$SharedPath          = 'C:\ADOpsKit\Reports\Get-AccountLockoutReport',
         [int]$LookbackMilliseconds   = 4233600000
     )
 
@@ -99,13 +99,16 @@ function Get-AccountLockoutReport {
 
     # ============ FILE PATHS ============
 
-    $fileLockList    = "$TempPath\List_of_locked_users.txt"
-    $fileLockCsvTemp = "$TempPath\Computers_Causing_locked_users.csv"
-    $fileLockCsvSort = "$TempPath\sorted.csv"
-    $fileLockHtml    = "$TempPath\Computers_Causing_Lockouts.html"
-    $shareLocklist   = "$SharedPath\List_of_locked_users.txt"
-    $shareLockCsv    = "$SharedPath\Computers_Causing_locked_users.csv"
-    $shareLockHtml   = "$SharedPath\Computers_Causing_Lockouts.html"
+    if (-not (Test-Path $TempPath)) { New-Item -ItemType Directory -Path $TempPath -Force | Out-Null }
+
+    $datePrefix      = Get-Date -Format 'yyyy-MM-dd'
+    $fileLockList    = "$TempPath\${datePrefix}_List_of_locked_users.txt"
+    $fileLockCsvTemp = "$TempPath\${datePrefix}_Computers_Causing_locked_users.csv"
+    $fileLockCsvSort = "$TempPath\${datePrefix}_sorted.csv"
+    $fileLockHtml    = "$TempPath\${datePrefix}_Computers_Causing_Lockouts.html"
+    $shareLocklist   = "$SharedPath\${datePrefix}_List_of_locked_users.txt"
+    $shareLockCsv    = "$SharedPath\${datePrefix}_Computers_Causing_locked_users.csv"
+    $shareLockHtml   = "$SharedPath\${datePrefix}_Computers_Causing_Lockouts.html"
 
     Remove-ExistingFile -Files @($fileLockList, $fileLockCsvTemp, $fileLockCsvSort)
 

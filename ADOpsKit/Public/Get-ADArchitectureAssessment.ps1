@@ -83,7 +83,7 @@ function Get-ADArchitectureAssessment {
 
         [string]$DomainController,
 
-        [string]$OutputFolder = (Join-Path $env:TEMP 'ADArchitectureAssessment'),
+        [string]$OutputFolder = 'C:\ADOpsKit\Reports\Get-ADArchitectureAssessment',
 
         [ValidateRange(1, 3650)]
         [int]$StaleUserDays = 90,

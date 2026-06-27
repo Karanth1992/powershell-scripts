@@ -47,7 +47,7 @@ function Get-ADForestHealth {
 
     [CmdletBinding()]
     param(
-        [string]$OutputFolder = $env:TEMP
+        [string]$OutputFolder = 'C:\ADOpsKit\Reports\Get-ADForestHealth'
     )
 
     # ============ CONFIGURATION ============
@@ -71,7 +71,7 @@ function Get-ADForestHealth {
 
     $forestName   = (Get-ADForest).Name
     $safeForest   = $forestName -replace '[\\/:*?"<>| ]', '_'
-    $outFile      = Join-Path $OutputFolder ("ADHealth_Latest_{0}.html" -f $safeForest)
+    $outFile      = Join-Path $OutputFolder ("$(Get-Date -Format 'yyyy-MM-dd')_ADHealth_{0}.html" -f $safeForest)
 
     # ========== DISCOVER PDC EMULATORS ==========
 
@@ -342,7 +342,7 @@ function Get-ADForestHealth {
 
     # ========== OUTPUT ==========
 
-    New-Item -Path $OutputFolder -ItemType Directory -Force | Out-Null
+    if (-not (Test-Path $OutputFolder)) { New-Item -Path $OutputFolder -ItemType Directory -Force | Out-Null }
     $htmlBody | Out-File -FilePath $outFile -Encoding UTF8
     Write-Host "Report written to: $outFile" -ForegroundColor Green
 

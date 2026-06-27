@@ -11,7 +11,7 @@
 RootModule = 'ADOpsKit.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.1'
+ModuleVersion = '1.1.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -79,6 +79,7 @@ FunctionsToExport = @(
     'Get-GPOInventory'
     'Get-GPOInventoryWithSettings'
     'Get-EntraConnectSyncStatus'
+    'Register-ADOpsKitScheduledTasks'
 )
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
@@ -117,7 +118,7 @@ PrivateData = @{
         # IconUri = ''
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'Initial release.'
+        ReleaseNotes = 'v1.1.0 — Default output paths set to C:\ADOpsKit\Reports\<FunctionName>\. Added Register-ADOpsKitScheduledTasks interactive wizard.'
 
     } # End of PSData hashtable
 

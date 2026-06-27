@@ -42,7 +42,7 @@ function Get-EntraConnectSyncStatus {
     [CmdletBinding()]
     param (
         [string]$ComputerName = $env:COMPUTERNAME,
-        [string]$ExportPath   = ""
+        [string]$ExportPath   = "C:\ADOpsKit\Reports\Get-EntraConnectSyncStatus\$(Get-Date -Format 'yyyy-MM-dd')_EntraConnectStatus.csv"
     )
 
     # ============ HELPERS ============
@@ -160,6 +160,8 @@ function Get-EntraConnectSyncStatus {
     # ============ EXPORT ============
 
     if ($ExportPath -ne "") {
+        $exportDir = Split-Path $ExportPath
+        if ($exportDir -and -not (Test-Path $exportDir)) { New-Item -ItemType Directory -Path $exportDir -Force | Out-Null }
         $result.Connectors | Export-Csv -NoTypeInformation -Path $ExportPath
         Write-Host "`nConnector stats exported to $ExportPath" -ForegroundColor Green
     }

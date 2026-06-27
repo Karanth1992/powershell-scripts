@@ -25,9 +25,9 @@ function Get-ADReplicationTopologyDiagram {
     FQDN or IP of a domain controller to use for LDAP queries.
     Defaults to the PDC emulator discovered automatically.
 
-.PARAMETER OutputFolder
-    Directory where the HTML report is written.
-    Defaults to the current working directory.
+.PARAMETER OutputPath
+    Full path for the HTML report file.
+    Defaults to C:\ADOpsKit\Reports\Get-ADReplicationTopologyDiagram\<date>_ADReplicationTopology.html
 
 .PARAMETER IncludeAllDomains
     When specified the function queries every domain in the forest via its
@@ -37,7 +37,7 @@ function Get-ADReplicationTopologyDiagram {
     Get-ADReplicationTopologyDiagram
 
 .EXAMPLE
-    Get-ADReplicationTopologyDiagram -OutputFolder "C:\Reports" -IncludeAllDomains
+    Get-ADReplicationTopologyDiagram -OutputPath "C:\Reports\topology.html" -IncludeAllDomains
 
 .NOTES
     Author:   K Shankar R Karanth
@@ -52,7 +52,7 @@ function Get-ADReplicationTopologyDiagram {
     [CmdletBinding()]
     param(
         [string]$DomainController,
-        [string]$OutputFolder = (Get-Location).Path,
+        [string]$OutputPath = "C:\ADOpsKit\Reports\Get-ADReplicationTopologyDiagram\$(Get-Date -Format 'yyyy-MM-dd')_ADReplicationTopology.html",
         [switch]$IncludeAllDomains
     )
 
@@ -762,12 +762,12 @@ $svgDiagram
 
     #region -- write output -------------------------------------------------------
 
-    if (-not (Test-Path $OutputFolder)) {
-        New-Item -ItemType Directory -Path $OutputFolder -Force | Out-Null
+    $outputDir = Split-Path $OutputPath
+    if (-not (Test-Path $outputDir)) {
+        New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     }
 
-    $timestamp  = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $outputFile = Join-Path $OutputFolder "ADReplicationTopology_$timestamp.html"
+    $outputFile = $OutputPath
 
     $html | Out-File -FilePath $outputFile -Encoding utf8 -Force
     Write-ADOKOk "Report written to: $outputFile"

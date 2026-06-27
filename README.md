@@ -32,6 +32,7 @@ Install-Module ADOpsKit
 | `Get-GPOInventory` | GPO inventory with links, permissions, status, and WMI filters. |
 | `Get-GPOInventoryWithSettings` | Extended GPO inventory including configured settings from `Get-GPOReport` XML. |
 | `Get-EntraConnectSyncStatus` | Entra Connect health — sync cycle, connector errors, pending exports, password sync. |
+| `Register-ADOpsKitScheduledTasks` | Interactive wizard to schedule any ADOpsKit function as a Windows Scheduled Task. |
 
 ---
 
@@ -114,7 +115,32 @@ Install-Module ADOpsKit
 Get-ADReplicationTopologyDiagram -OutputPath "C:\temp\topology.html"
 Get-ADForestHealth
 Test-DCPortHealth -ExportPath "C:\temp\ports.csv"
+
+# Interactive scheduled task setup
+Register-ADOpsKitScheduledTasks
 ```
+
+---
+
+## Default Output Paths
+
+All functions save reports to `C:\ADOpsKit\Reports\<FunctionName>\` by default, with dated filenames:
+
+```
+C:\ADOpsKit\Reports\
+├── Get-ADForestHealth\
+│   └── 2026-06-27_ADForestHealth.html
+├── Get-GPOInventory\
+│   └── 2026-06-27_GPOInventory.html
+├── Test-DCPortHealth\
+│   └── 2026-06-27_DCPortHealth.csv
+└── Logs\
+    └── Get-ADForestHealth.log
+```
+
+Override the path on any function using `-OutputPath` or `-OutputFolder`.
+
+---
 
 ### Via standalone scripts
 

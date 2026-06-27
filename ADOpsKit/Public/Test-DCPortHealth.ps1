@@ -55,7 +55,7 @@ function Test-DCPortHealth {
     [CmdletBinding()]
     param (
         [int]$TimeoutSeconds = 3,
-        [string]$ExportPath  = ""
+        [string]$ExportPath  = "C:\ADOpsKit\Reports\Test-DCPortHealth\$(Get-Date -Format 'yyyy-MM-dd')_DCPortHealth.csv"
     )
 
     # ============ PORT DEFINITIONS ============
@@ -119,6 +119,8 @@ function Test-DCPortHealth {
     # ============ EXPORT ============
 
     if ($ExportPath -ne "") {
+        $exportDir = Split-Path $ExportPath
+        if ($exportDir -and -not (Test-Path $exportDir)) { New-Item -ItemType Directory -Path $exportDir -Force | Out-Null }
         $results | Sort-Object DomainController, Port |
             Export-Csv -Path $ExportPath -NoTypeInformation
         Write-Host "Full results exported to $ExportPath" -ForegroundColor Green

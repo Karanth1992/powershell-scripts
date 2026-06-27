@@ -44,7 +44,7 @@ function Get-GPOInventory {
         [Parameter(Mandatory = $true)]
         [string]$DomainName,
 
-        [string]$OutputPath = (Join-Path $env:TEMP 'GPOInventory.html')
+        [string]$OutputPath = "C:\ADOpsKit\Reports\Get-GPOInventory\$(Get-Date -Format 'yyyy-MM-dd')_GPOInventory.html"
     )
 
     function Get-GuidFromGpLinkLocal {

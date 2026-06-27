@@ -17,9 +17,9 @@ function Get-InsecureLDAPBinds {
 .PARAMETER Hours
     How many hours back to search for events. Defaults to 24.
 
-.PARAMETER OutputFolder
+.PARAMETER OutputPath
     Folder where the CSV output file is written.
-    Defaults to $env:TEMP.
+    Defaults to C:\ADOpsKit\Reports\Get-InsecureLDAPBinds
 
 .EXAMPLE
     Get-InsecureLDAPBinds
@@ -45,14 +45,14 @@ function Get-InsecureLDAPBinds {
         [Parameter(Mandatory = $false, Position = 0)]
         [Int]$Hours = 24,
 
-        [string]$OutputFolder = $env:TEMP
+        [string]$OutputPath = 'C:\ADOpsKit\Reports\Get-InsecureLDAPBinds'
     )
 
     $dateString = Get-Date -Format "yyyy-MM-dd"
     $since      = (Get-Date).AddHours(-$Hours)
 
-    if (-not (Test-Path -Path $OutputFolder)) {
-        New-Item -ItemType Directory -Path $OutputFolder | Out-Null
+    if (-not (Test-Path -Path $OutputPath)) {
+        New-Item -ItemType Directory -Path $OutputPath | Out-Null
     }
 
     $DomainControllers    = Get-ADDomainController -Filter *
@@ -130,7 +130,7 @@ function Get-InsecureLDAPBinds {
         Write-Host "Events collected from $ComputerName."
     }
 
-    $outputFile = Join-Path $OutputFolder "InsecureLDAPBinds_$dateString.csv"
+    $outputFile = Join-Path $OutputPath "${dateString}_InsecureLDAPBinds.csv"
 
     if ($AllInsecureLDAPBinds.Count -gt 0) {
         $AllInsecureLDAPBinds | Export-Csv -NoTypeInformation -Path $outputFile
