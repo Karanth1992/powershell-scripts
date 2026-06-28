@@ -30,15 +30,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install RSAT-AD-PowerShell
+        shell: pwsh
+        run: |
+          Add-WindowsCapability -Online -Name Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0
+
       - name: Run Pester unit tests
         shell: pwsh
         run: |
           Install-Module Pester -Force -SkipPublisherCheck -Scope CurrentUser
-          Import-Module Pester
+          Import-Module Pester -MinimumVersion 5.0
           $config = New-PesterConfiguration
-          $config.Run.Path         = './ADOpsKit/Tests'
-          $config.Filter.ExcludeTag = 'Integration'
-          $config.Output.Verbosity = 'Detailed'
+          $config.Run.Path              = './ADOpsKit/Tests'
+          $config.Filter.ExcludeTag     = 'Integration'
+          $config.Output.Verbosity      = 'Detailed'
           $config.TestResult.Enabled    = $true
           $config.TestResult.OutputPath = 'TestResults.xml'
           $result = Invoke-Pester -Configuration $config
