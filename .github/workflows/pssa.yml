@@ -30,11 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install RSAT-AD-PowerShell
-        shell: pwsh
-        run: |
-          Install-WindowsFeature RSAT-AD-PowerShell -ErrorAction SilentlyContinue
-
       - name: Run Pester unit tests
         shell: pwsh
         run: |

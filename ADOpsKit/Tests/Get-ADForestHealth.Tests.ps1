@@ -1,6 +1,4 @@
-BeforeAll {
-    Import-Module "$PSScriptRoot\..\ADOpsKit.psd1" -Force
-}
+Import-Module "$PSScriptRoot\..\ADOpsKit.psd1" -Force -ErrorAction Stop
 
 Describe "Get-ADForestHealth" {
 
