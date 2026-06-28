@@ -1,0 +1,227 @@
+TOPIC
+    about_ADSetupKit
+
+SHORT DESCRIPTION
+    ADSetupKit is an interactive Windows Server setup toolkit that guides
+    administrators through the complete provisioning lifecycle — from network
+    configuration and computer rename through role installation, DC promotion,
+    domain join, and post-restart tasks such as AD sites, DHCP scopes, and
+    DNS forwarders.
+
+LONG DESCRIPTION
+    ADSetupKit is a companion module to ADOpsKit. While ADOpsKit focuses on
+    day-to-day operations (health checks, auditing, replication monitoring),
+    ADSetupKit handles the initial setup and provisioning of Windows Server
+    infrastructure.
+
+    The module is built for administrators who set up Active Directory
+    environments — whether a single DC in a small office or a multi-site
+    forest with child domains and replica controllers.
+
+    All functions follow a consistent pattern:
+      - Named with the ADSK prefix (ADSetupKit)
+      - Require elevation (Run as Administrator)
+      - Use shared helper functions (Write-ADSKBanner, Write-ADSKOk, etc.)
+      - Support -WhatIf / -Confirm via SupportsShouldProcess where applicable
+
+  REQUIREMENTS
+    - Windows Server 2016 or later (PowerShell 5.1)
+    - Run as Administrator for all functions
+    - ActiveDirectory RSAT module for New-ADSKSite
+    - DHCP Server role for New-ADSKDhcpScope
+    - DNS Server role for Set-ADSKDnsForwarder
+    - ADDSDeployment module (ships with AD-Domain-Services role) for DC
+      promotion functions
+
+  WIZARD FLOW
+    The easiest way to use ADSetupKit is through the interactive wizard:
+
+        Start-ADSKSetupWizard
+
+    The wizard walks through seven steps:
+
+      Step 1  Network Configuration
+              Optionally sets a static IP, prefix, gateway, and DNS servers
+              on the first connected (or named) network adapter. Optionally
+              renames the adapter.
+
+      Step 2  Computer Name
+              Optionally renames the local computer. The rename takes effect
+              after a restart. The wizard defers the restart until the end.
+
+      Step 3  Application Installation
+              Optionally runs installer scripts (.ps1 and .bat) from a folder.
+              Scripts run in alphabetical order. Prefix filenames with numbers
+              to control order (e.g. 01-dotnet.ps1, 02-chrome.ps1).
+
+      Step 4  Role Installation
+              Presents a menu of common roles:
+                - AD Domain Services (ADDS)
+                - DNS Server
+                - DHCP Server
+                - File Server
+                - Print Server
+                - Web Server (IIS)
+                - Group Policy Management (GPMC)
+                - RSAT Tools
+              Multiple selections supported. Option 0 installs the recommended
+              DC set (ADDS + DNS + GPMC).
+
+      Step 5  Server Purpose
+              If ADDS was selected in Step 4:
+                [1] New Forest — promotes as the first DC in a new forest
+                [2] Additional DC — promotes as a replica DC in an existing domain
+                [3] New Child Domain — promotes as the first DC of a new child domain
+
+              If ADDS was NOT selected:
+                [1] Join to existing domain (member server)
+                [2] Standalone server (no domain join)
+
+      Step 6  Post-Restart Tasks (DC promotion only)
+              For DC promotion scenarios, tasks that require AD to be running
+              (site creation, DHCP scope, DNS forwarders) can be scheduled to
+              run automatically after the promotion restart. The wizard writes
+              a PostRestart.ps1 script to C:\ADSKSetup\ and registers it as a
+              startup scheduled task (ADSKPostRestart). The task self-deletes
+              after running.
+
+      Step 7  Review and Confirm
+              Prints a summary of all collected settings. Asks for confirmation
+              before making any changes.
+
+  INDIVIDUAL FUNCTIONS
+
+    Set-ADSKNetworkConfig
+        Configures a static IPv4 address on a network adapter. Removes existing
+        DHCP leases before applying. Optionally renames the adapter.
+
+        Example:
+            Set-ADSKNetworkConfig `
+                -IPAddress '192.168.1.10' `
+                -DefaultGateway '192.168.1.1' `
+                -DnsServers @('192.168.1.1','8.8.8.8')
+
+    Rename-ADSKComputer
+        Renames the local computer. Optionally triggers an immediate restart.
+
+        Example:
+            Rename-ADSKComputer -NewName 'DC-01' -Restart
+
+    Install-ADSKApplications
+        Runs .ps1 and .bat installer scripts from a folder in alphabetical
+        order. Logs results to a .log and .csv file. Scripts that fail do not
+        stop the sequence.
+
+        Example:
+            Install-ADSKApplications -ScriptFolder 'C:\Installers'
+
+    Install-ADSKRoles
+        Installs Windows Server roles and features using Install-WindowsFeature.
+        Interactive menu or non-interactive via -Roles parameter.
+
+        Example:
+            Install-ADSKRoles -Roles @('AD-Domain-Services','DNS','GPMC')
+
+    New-ADSKForest
+        Promotes the local server to the first DC in a new AD forest.
+        Installs AD-Domain-Services if not present. Auto-restarts.
+
+        Example:
+            $pwd = Read-Host "DSRM Password" -AsSecureString
+            New-ADSKForest -DomainName 'corp.contoso.com' -SafeModePassword $pwd
+
+    Add-ADSKDomainController
+        Promotes the local server as a replica DC in an existing domain.
+        Installs AD-Domain-Services if not present. Auto-restarts.
+
+        Example:
+            $cred = Get-Credential
+            $pwd  = Read-Host "DSRM Password" -AsSecureString
+            Add-ADSKDomainController `
+                -DomainName 'corp.contoso.com' `
+                -Credential $cred `
+                -SafeModePassword $pwd
+
+    New-ADSKChildDomain
+        Creates a new child domain under an existing parent domain.
+        Promotes the local server as the first DC of the child domain.
+        Installs AD-Domain-Services if not present. Auto-restarts.
+
+        Example:
+            $cred = Get-Credential
+            $pwd  = Read-Host "DSRM Password" -AsSecureString
+            New-ADSKChildDomain `
+                -ChildDomainName 'uk' `
+                -ParentDomainName 'corp.contoso.com' `
+                -Credential $cred `
+                -SafeModePassword $pwd
+
+    Add-ADSKDomainMember
+        Joins the local server to an existing domain as a member server.
+        Optionally places the computer account in a specific OU.
+
+        Example:
+            $cred = Get-Credential
+            Add-ADSKDomainMember `
+                -DomainName 'corp.contoso.com' `
+                -Credential $cred `
+                -OUPath 'OU=Servers,DC=corp,DC=contoso,DC=com' `
+                -Restart
+
+    New-ADSKSite
+        Creates an AD replication site, associates a subnet, and optionally
+        creates a site link to an existing site.
+
+        Example:
+            New-ADSKSite `
+                -SiteName 'Chennai' `
+                -SubnetCIDR '10.10.1.0/24' `
+                -LinkToSite 'Default-First-Site-Name'
+
+    New-ADSKDhcpScope
+        Creates and activates a DHCP scope on the local DHCP server.
+        Sets gateway (option 3) and DNS (option 6). Authorises the DHCP
+        server in AD.
+
+        Example:
+            New-ADSKDhcpScope `
+                -ScopeName 'Office LAN' `
+                -StartRange '192.168.1.100' `
+                -EndRange '192.168.1.200' `
+                -SubnetMask '255.255.255.0' `
+                -DefaultGateway '192.168.1.1' `
+                -DnsServers @('192.168.1.10')
+
+    Set-ADSKDnsForwarder
+        Replaces the DNS forwarder list on the local DNS server. Optionally
+        enables root hints fallback.
+
+        Example:
+            Set-ADSKDnsForwarder -Forwarders @('8.8.8.8','8.8.4.4')
+
+  PRIVATE HELPERS (not exported)
+    The following helper functions are available internally to all module
+    functions. They are dot-sourced from Private\Helpers.ps1.
+
+    Write-ADSKBanner   — Prints a section header banner
+    Write-ADSKOk       — Green [OK] message
+    Write-ADSKWarn     — Yellow [WARN] message
+    Write-ADSKInfo     — Cyan [INFO] message
+    Write-ADSKFail     — Red [FAIL] message
+    Test-ADSKAdministrator     — Returns $true if the current session is elevated
+    Read-ADSKMenuChoice        — Single-choice numbered menu
+    Read-ADSKMultiMenuChoice   — Multi-choice numbered menu with comma-separated input
+    Register-ADSKStartupTask   — Registers a PowerShell script as an at-startup scheduled task
+
+  LINKS
+    Project:  https://github.com/Karanth1992/powershell-scripts
+    License:  https://github.com/Karanth1992/powershell-scripts/blob/main/LICENSE
+    Author:   https://karanth.ovh
+
+SEE ALSO
+    about_ADOpsKit
+    Install-WindowsFeature
+    Install-ADDSForest
+    Install-ADDSDomainController
+    Install-ADDSDomain
+    Add-Computer

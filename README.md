@@ -49,15 +49,63 @@ Full changelog: [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
+## ADSetupKit Module
+
+**ADSetupKit** is a companion module for provisioning Windows Servers from scratch — network config, role installation, DC promotion, domain join, app deployment, and post-restart configuration.
+
+```powershell
+Import-Module .\ADSetupKit\ADSetupKit.psd1
+
+# Full interactive wizard — walks through everything
+Start-ADSKSetupWizard
+```
+
+| Function | Purpose |
+|----------|---------|
+| `Start-ADSKSetupWizard` | Interactive 7-step wizard — network, rename, apps, roles, AD scenario, post-restart tasks |
+| `Set-ADSKNetworkConfig` | Set static IP, subnet, gateway, DNS on a network adapter |
+| `Rename-ADSKComputer` | Rename the local server with optional immediate restart |
+| `Install-ADSKApplications` | Run numbered `.ps1`/`.bat` installer scripts in sequence from a folder |
+| `Install-ADSKRoles` | Multi-select menu to install Windows Server roles |
+| `New-ADSKForest` | Promote server as first DC in a new forest |
+| `Add-ADSKDomainController` | Add a replica DC to an existing domain |
+| `New-ADSKChildDomain` | Create a new child domain under a parent |
+| `Add-ADSKDomainMember` | Join server to an existing domain (member server) |
+| `New-ADSKSite` | Create AD site, subnet, and site link |
+| `New-ADSKDhcpScope` | Create and activate a DHCP scope with gateway/DNS options |
+| `Set-ADSKDnsForwarder` | Set DNS forwarders on the local DNS server |
+
+### Wizard Flow
+
+```
+Step 1  Network Config     → Static IP, gateway, DNS
+Step 2  Computer Rename    → Rename before domain ops
+Step 3  App Installation   → Run numbered installer scripts
+Step 4  Role Selection     → Multi-select: ADDS, DNS, DHCP, IIS, File, Print, RSAT
+Step 5  AD Scenario        → New forest / Replica DC / Child domain / Member server / Standalone
+Step 6  Post-Restart Tasks → AD sites, DHCP scope, DNS forwarders (auto-scheduled startup task)
+Step 7  Review & Execute
+```
+
+---
+
 ## Repository Structure
 
 ```
 powershell-scripts/
-├── ADOpsKit/                  ← PowerShell Gallery module
-│   ├── Public/                ← Exported functions (one per script)
+├── ADOpsKit/                  ← AD operations & reporting module (PSGallery)
+│   ├── Public/                ← Exported functions
 │   ├── Private/               ← Internal helpers
-│   ├── ADOpsKit.psd1          ← Module manifest
-│   └── ADOpsKit.psm1          ← Root module
+│   ├── Tests/                 ← Pester unit tests
+│   ├── en-US/                 ← Module help file
+│   ├── ADOpsKit.psd1
+│   └── ADOpsKit.psm1
+├── ADSetupKit/                ← Server provisioning & DC promotion module
+│   ├── Public/                ← Exported functions
+│   ├── Private/               ← Internal helpers
+│   ├── en-US/                 ← Module help file
+│   ├── ADSetupKit.psd1
+│   └── ADSetupKit.psm1
 └── standalone/                ← Original standalone scripts
     ├── active-directory/
     │   ├── health/            → DC health, port tests, performance baseline
