@@ -33,7 +33,7 @@ jobs:
       - name: Install RSAT-AD-PowerShell
         shell: pwsh
         run: |
-          Add-WindowsCapability -Online -Name Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0
+          Install-WindowsFeature RSAT-AD-PowerShell -ErrorAction SilentlyContinue
 
       - name: Run Pester unit tests
         shell: pwsh
