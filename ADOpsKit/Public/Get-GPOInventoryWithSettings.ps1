@@ -57,8 +57,6 @@ function Get-GPOInventoryWithSettings {
               run as Domain Admin or equivalent
 #>
 
-    #requires -Modules ActiveDirectory, GroupPolicy
-
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]
