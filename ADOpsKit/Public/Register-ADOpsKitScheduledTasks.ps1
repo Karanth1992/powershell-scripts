@@ -125,6 +125,8 @@ function Register-ADOpsKitScheduledTasks {
             $smtpPass    = $EmailConfig.Password
             $useSsl      = $EmailConfig.UseSsl
 
+            $sslParam = if ($useSsl) { '-UseSsl' } else { '' }
+
             $emailBlock = @"
 
     # --- Email report ---
@@ -136,7 +138,7 @@ function Register-ADOpsKitScheduledTasks {
             Send-MailMessage ``
                 -SmtpServer '$smtpServer' ``
                 -Port $smtpPort ``
-                -UseSsl:`$$useSsl ``
+                $sslParam ``
                 -Credential `$smtpCred ``
                 -From '$fromAddr' ``
                 -To '$toAddr' ``
