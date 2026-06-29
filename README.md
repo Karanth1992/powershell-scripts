@@ -40,6 +40,7 @@ Install-Module ADOpsKit
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **1.1.3** | 2026-06-29 | `Register-ADOpsKitScheduledTasks` — email reports as attachments after each run (SMTP, SSL, auth support) |
 | **1.1.2** | 2026-06-28 | Fix `Register-ADOpsKitScheduledTasks` — ambiguous parameter set error when registering tasks (`-Principal` and `-Password` conflict on `Register-ScheduledTask`) |
 | **1.1.1** | 2026-06-28 | Fix `Test-DCPortHealth` — service names showing as blank due to integer key lookup on ordered hashtable |
 | **1.1.0** | 2026-06-28 | All functions default output to `C:\ADOpsKit\Reports\<FunctionName>\` with dated filenames. Added `Register-ADOpsKitScheduledTasks` interactive scheduler wizard. Added `Get-Help about_ADOpsKit` help file |

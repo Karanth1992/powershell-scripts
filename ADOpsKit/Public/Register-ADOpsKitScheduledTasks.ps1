@@ -13,6 +13,7 @@ function Register-ADOpsKitScheduledTasks {
         - Runs under the specified service account
         - Writes dated reports to OutputBasePath\<FunctionName>\yyyy-MM-dd_<report>
         - Logs transcript to OutputBasePath\Logs\<FunctionName>.log
+        - Optionally emails the report as an attachment via SMTP after each run
 
 .PARAMETER OutputBasePath
     Root folder for all reports and logs.
@@ -105,12 +106,53 @@ function Register-ADOpsKitScheduledTasks {
             [CimInstance]$Trigger,
             [string]$Account,
             [string]$Password,
-            [string]$BasePath
+            [string]$BasePath,
+            [hashtable]$EmailConfig
         )
 
         $logFile = Join-Path $BasePath "Logs\$TaskName.log"
         $logDir  = Split-Path $logFile
         if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+
+        # Build optional email block
+        $emailBlock = ''
+        if ($EmailConfig -and $EmailConfig.Enabled) {
+            $smtpServer  = $EmailConfig.SmtpServer
+            $smtpPort    = $EmailConfig.Port
+            $fromAddr    = $EmailConfig.From
+            $toAddr      = $EmailConfig.To
+            $smtpUser    = $EmailConfig.Username
+            $smtpPass    = $EmailConfig.Password
+            $useSsl      = $EmailConfig.UseSsl
+
+            $emailBlock = @"
+
+    # --- Email report ---
+    try {
+        `$reportFiles = Get-ChildItem -Path '$BasePath\$TaskName' -File -ErrorAction SilentlyContinue |
+                        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (`$reportFiles) {
+            `$smtpCred = New-Object System.Management.Automation.PSCredential('$smtpUser', (ConvertTo-SecureString '$smtpPass' -AsPlainText -Force))
+            Send-MailMessage ``
+                -SmtpServer '$smtpServer' ``
+                -Port $smtpPort ``
+                -UseSsl:`$$useSsl ``
+                -Credential `$smtpCred ``
+                -From '$fromAddr' ``
+                -To '$toAddr' ``
+                -Subject "ADOpsKit Report: $TaskName `$(Get-Date -Format 'yyyy-MM-dd')" ``
+                -Body "Please find the attached ADOpsKit report for $TaskName generated on `$(Get-Date -Format 'yyyy-MM-dd HH:mm')." ``
+                -Attachments `$reportFiles.FullName ``
+                -ErrorAction Stop
+            Write-Host "  Report emailed to $toAddr"
+        } else {
+            Write-Warning "No report file found to email for $TaskName"
+        }
+    } catch {
+        Write-Warning "Email failed for $TaskName : `$_"
+    }
+"@
+        }
 
         $fullScript = @"
 Start-Transcript -Path '$logFile' -Append -Force
@@ -118,8 +160,9 @@ try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Import-Module ADOpsKit -ErrorAction Stop
     $ScriptBlock
+$emailBlock
 } catch {
-    Write-Error "ADOpsKit task '$TaskName' failed: `$_"
+    Write-Error "ADOpsKit task '$TaskName' failed: ``$_"
 } finally {
     Stop-Transcript
 }
@@ -165,18 +208,18 @@ try {
     Write-Host "  Reports will be saved to: $OutputBasePath\<FunctionName>\"
     Write-Host ""
 
-    # --- Service account ---
-    Write-Banner "Step 1 of 4 - Service Account"
+    # --- Step 1: Service account ---
+    Write-Banner "Step 1 of 5 - Service Account"
     $account = Read-Host "  Enter service account (DOMAIN\username)"
     $securePwd = Read-Host "  Password for $account" -AsSecureString
     $plainPwd  = Get-PlainText -Secure $securePwd
 
-    # --- Domain name (for functions that need it) ---
-    Write-Banner "Step 2 of 4 - Domain"
+    # --- Step 2: Domain name ---
+    Write-Banner "Step 2 of 5 - Domain"
     $domainName = Read-Host "  Enter domain FQDN (e.g. corp.contoso.com)"
 
-    # --- Function selection ---
-    Write-Banner "Step 3 of 4 - Select Functions"
+    # --- Step 3: Function selection ---
+    Write-Banner "Step 3 of 5 - Select Functions"
     Write-Host "`n  Suggested daily  : $($dailySuggested -join ', ')" -ForegroundColor DarkGray
     Write-Host "  Suggested weekly : $($weeklySuggested -join ', ')" -ForegroundColor DarkGray
 
@@ -184,8 +227,8 @@ try {
         -Prompt  "Which functions do you want to schedule?" `
         -Options $allFunctions
 
-    # --- Schedule per function ---
-    Write-Banner "Step 4 of 4 - Schedule"
+    # --- Step 4: Schedule per function ---
+    Write-Banner "Step 4 of 5 - Schedule"
 
     $taskConfigs = @()
 
@@ -213,9 +256,59 @@ try {
         }
     }
 
+    # --- Step 5: Email ---
+    Write-Banner "Step 5 of 5 - Email Reports"
+    Write-Host "`n  Optionally email the report file as an attachment after each run." -ForegroundColor White
+
+    $emailConfig = @{ Enabled = $false }
+
+    $wantEmail = Read-Host "  Send reports by email? (Y/N)"
+    if ($wantEmail -match '^[Yy]') {
+
+        $smtpServer = Read-Host "  SMTP server (e.g. smtp.office365.com)"
+
+        $portRaw = Read-Host "  SMTP port (default 587)"
+        $smtpPort = if ([string]::IsNullOrWhiteSpace($portRaw)) { 587 } else { [int]$portRaw }
+
+        $sslAnswer = Read-MenuChoice -Prompt "  Use SSL/TLS?" -Options @('Yes', 'No')
+        $useSsl    = $sslAnswer -eq 'Yes'
+
+        $fromAddr = Read-Host "  From address (e.g. reports@corp.com)"
+        $toAddr   = Read-Host "  To address   (e.g. admin@corp.com)"
+
+        $authAnswer = Read-MenuChoice -Prompt "  SMTP authentication?" -Options @('Username and password', 'No authentication (relay)')
+        if ($authAnswer -eq 'Username and password') {
+            $smtpUser    = Read-Host "  SMTP username"
+            $smtpSecure  = Read-Host "  SMTP password" -AsSecureString
+            $smtpPass    = Get-PlainText -Secure $smtpSecure
+        } else {
+            $smtpUser = ''
+            $smtpPass = ''
+        }
+
+        $emailConfig = @{
+            Enabled    = $true
+            SmtpServer = $smtpServer
+            Port       = $smtpPort
+            UseSsl     = $useSsl
+            From       = $fromAddr
+            To         = $toAddr
+            Username   = $smtpUser
+            Password   = $smtpPass
+        }
+
+        Write-Host ""
+        Write-Host "  [OK] Reports will be emailed to $toAddr after each run." -ForegroundColor Green
+    }
+
     # --- Confirm ---
     Write-Banner "Review - Tasks to Register"
     $taskConfigs | Format-Table Name, Frequency, Time -AutoSize
+    if ($emailConfig.Enabled) {
+        Write-Host "  Email : $($emailConfig.From) -> $($emailConfig.To) via $($emailConfig.SmtpServer):$($emailConfig.Port)" -ForegroundColor Cyan
+    } else {
+        Write-Host "  Email : Disabled" -ForegroundColor DarkGray
+    }
     $confirm = Read-Host "`n  Proceed? (Y/N)"
     if ($confirm -notmatch '^[Yy]') {
         Write-Host "`n  Cancelled." -ForegroundColor Yellow
@@ -237,14 +330,14 @@ try {
     Write-Banner "Registering Tasks"
 
     $scriptBlocks = @{
-        'Get-AccountLockoutReport'        = "Get-AccountLockoutReport -TempPath '$OutputBasePath\Get-AccountLockoutReport' -SharedPath '$OutputBasePath\Get-AccountLockoutReport'"
-        'Get-InsecureLDAPBinds'           = "Get-InsecureLDAPBinds -Hours 24 -OutputPath '$OutputBasePath\Get-InsecureLDAPBinds'"
-        'Get-ADForestHealth'              = "Get-ADForestHealth -OutputFolder '$OutputBasePath\Get-ADForestHealth'"
-        'Test-DCPortHealth'               = "Test-DCPortHealth -TimeoutSeconds 5 -ExportPath '$OutputBasePath\Test-DCPortHealth\`$(Get-Date -Format ''yyyy-MM-dd'')_DCPortHealth.csv'"
-        'Get-EntraConnectSyncStatus'      = "Get-EntraConnectSyncStatus -ExportPath '$OutputBasePath\Get-EntraConnectSyncStatus\`$(Get-Date -Format ''yyyy-MM-dd'')_EntraConnectStatus.csv'"
-        'Get-GPOInventory'                = "Get-GPOInventory -DomainName '$domainName' -OutputPath '$OutputBasePath\Get-GPOInventory\`$(Get-Date -Format ''yyyy-MM-dd'')_GPOInventory.html'"
-        'Get-GPOInventoryWithSettings'    = "Get-GPOInventoryWithSettings -DomainName '$domainName' -OutputPath '$OutputBasePath\Get-GPOInventoryWithSettings\`$(Get-Date -Format ''yyyy-MM-dd'')_GPOInventoryWithSettings.html'"
-        'Get-ADArchitectureAssessment'    = "Get-ADArchitectureAssessment -DomainName '$domainName' -OutputFolder '$OutputBasePath\Get-ADArchitectureAssessment'"
+        'Get-AccountLockoutReport'         = "Get-AccountLockoutReport -TempPath '$OutputBasePath\Get-AccountLockoutReport' -SharedPath '$OutputBasePath\Get-AccountLockoutReport'"
+        'Get-InsecureLDAPBinds'            = "Get-InsecureLDAPBinds -Hours 24 -OutputPath '$OutputBasePath\Get-InsecureLDAPBinds'"
+        'Get-ADForestHealth'               = "Get-ADForestHealth -OutputFolder '$OutputBasePath\Get-ADForestHealth'"
+        'Test-DCPortHealth'                = "Test-DCPortHealth -TimeoutSeconds 5 -ExportPath '$OutputBasePath\Test-DCPortHealth\`$(Get-Date -Format ''yyyy-MM-dd'')_DCPortHealth.csv'"
+        'Get-EntraConnectSyncStatus'       = "Get-EntraConnectSyncStatus -ExportPath '$OutputBasePath\Get-EntraConnectSyncStatus\`$(Get-Date -Format ''yyyy-MM-dd'')_EntraConnectStatus.csv'"
+        'Get-GPOInventory'                 = "Get-GPOInventory -DomainName '$domainName' -OutputPath '$OutputBasePath\Get-GPOInventory\`$(Get-Date -Format ''yyyy-MM-dd'')_GPOInventory.html'"
+        'Get-GPOInventoryWithSettings'     = "Get-GPOInventoryWithSettings -DomainName '$domainName' -OutputPath '$OutputBasePath\Get-GPOInventoryWithSettings\`$(Get-Date -Format ''yyyy-MM-dd'')_GPOInventoryWithSettings.html'"
+        'Get-ADArchitectureAssessment'     = "Get-ADArchitectureAssessment -DomainName '$domainName' -OutputFolder '$OutputBasePath\Get-ADArchitectureAssessment'"
         'Get-ADReplicationTopologyDiagram' = "Get-ADReplicationTopologyDiagram -OutputPath '$OutputBasePath\Get-ADReplicationTopologyDiagram\`$(Get-Date -Format ''yyyy-MM-dd'')_ADReplicationTopology.html'"
     }
 
@@ -256,7 +349,8 @@ try {
             -Trigger     $cfg.Trigger `
             -Account     $account `
             -Password    $plainPwd `
-            -BasePath    $OutputBasePath
+            -BasePath    $OutputBasePath `
+            -EmailConfig $emailConfig
     }
 
     # --- Done ---
@@ -264,6 +358,9 @@ try {
     Write-Host "`n  Tasks registered under \ADOpsKit\ in Task Scheduler."
     Write-Host "  Reports   : $OutputBasePath\<FunctionName>\"
     Write-Host "  Logs      : $OutputBasePath\Logs\"
+    if ($emailConfig.Enabled) {
+        Write-Host "  Email     : Reports will be sent to $($emailConfig.To) after each run." -ForegroundColor Cyan
+    }
     Write-Host ""
     Write-Host "  Verify with:"
     Write-Host "    Get-ScheduledTask -TaskPath '\ADOpsKit\' | Select-Object TaskName, State" -ForegroundColor DarkGray

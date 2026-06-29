@@ -29,6 +29,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## ADOpsKit Module
 
+### [1.1.3] – 2026-06-29
+
+#### Added
+- `Register-ADOpsKitScheduledTasks` — new Step 5 "Email Reports" in the wizard. After each scheduled run, the generated report is emailed as an attachment. Supports SMTP server, port, SSL/TLS, From/To addresses, and optional SMTP authentication (username + password). Email failure is non-fatal — the task logs a warning and continues.
+
 ### [1.1.2] – 2026-06-28
 
 #### Fixed
