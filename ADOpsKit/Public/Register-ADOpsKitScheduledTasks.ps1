@@ -209,17 +209,17 @@ $emailBlock
     Write-Host ""
 
     # --- Step 1: Service account ---
-    Write-Banner "Step 1 of 5 - Service Account"
+    Write-Banner "Step 1 of 4 - Service Account"
     $account = Read-Host "  Enter service account (DOMAIN\username)"
     $securePwd = Read-Host "  Password for $account" -AsSecureString
     $plainPwd  = Get-PlainText -Secure $securePwd
 
     # --- Step 2: Domain name ---
-    Write-Banner "Step 2 of 5 - Domain"
+    Write-Banner "Step 2 of 4 - Domain"
     $domainName = Read-Host "  Enter domain FQDN (e.g. corp.contoso.com)"
 
     # --- Step 3: Function selection ---
-    Write-Banner "Step 3 of 5 - Select Functions"
+    Write-Banner "Step 3 of 4 - Select Functions"
     Write-Host "`n  Suggested daily  : $($dailySuggested -join ', ')" -ForegroundColor DarkGray
     Write-Host "  Suggested weekly : $($weeklySuggested -join ', ')" -ForegroundColor DarkGray
 
@@ -227,15 +227,20 @@ $emailBlock
         -Prompt  "Which functions do you want to schedule?" `
         -Options $allFunctions
 
-    # --- Step 4: Schedule per function ---
-    Write-Banner "Step 4 of 5 - Schedule"
+    # --- Step 4: Schedule + Email per function ---
+    Write-Banner "Step 4 of 4 - Schedule & Email"
+    Write-Host "`n  Configure schedule and optional email for each selected function." -ForegroundColor White
+
+    # Collect SMTP server settings once if user wants email for any task
+    $sharedSmtp = $null
 
     $taskConfigs = @()
 
     foreach ($fn in $selectedFunctions) {
-        Write-Host "`n  Configuring: $fn" -ForegroundColor White
+        Write-Host "`n  ---- $fn ----" -ForegroundColor Cyan
 
-        $freq = Read-MenuChoice -Prompt "  Frequency for $fn" -Options @('Daily', 'Weekly')
+        # Schedule
+        $freq = Read-MenuChoice -Prompt "  Frequency" -Options @('Daily', 'Weekly')
 
         if ($freq -eq 'Daily') {
             $timeStr = Read-Host "  Run time (HH:mm, default 06:00)"
@@ -248,67 +253,67 @@ $emailBlock
             $trigger = New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek $day -At $timeStr
         }
 
+        # Email
+        $emailConfig = @{ Enabled = $false }
+        $wantEmail = Read-Host "  Email report after run? (Y/N)"
+        if ($wantEmail -match '^[Yy]') {
+
+            # Collect SMTP server/port/SSL/auth once and reuse unless user wants different settings
+            if ($sharedSmtp -and (Read-Host "  Use same SMTP settings as previous task? (Y/N)") -match '^[Yy]') {
+                $smtpServer = $sharedSmtp.SmtpServer
+                $smtpPort   = $sharedSmtp.Port
+                $useSsl     = $sharedSmtp.UseSsl
+                $smtpUser   = $sharedSmtp.Username
+                $smtpPass   = $sharedSmtp.Password
+            } else {
+                $smtpServer = Read-Host "  SMTP server (e.g. smtp.office365.com)"
+                $portRaw    = Read-Host "  SMTP port (default 587)"
+                $smtpPort   = if ([string]::IsNullOrWhiteSpace($portRaw)) { 587 } else { [int]$portRaw }
+                $sslAnswer  = Read-MenuChoice -Prompt "  Use SSL/TLS?" -Options @('Yes', 'No')
+                $useSsl     = $sslAnswer -eq 'Yes'
+                $authAnswer = Read-MenuChoice -Prompt "  SMTP authentication?" -Options @('Username and password', 'No authentication (relay)')
+                if ($authAnswer -eq 'Username and password') {
+                    $smtpUser   = Read-Host "  SMTP username"
+                    $smtpSecure = Read-Host "  SMTP password" -AsSecureString
+                    $smtpPass   = Get-PlainText -Secure $smtpSecure
+                } else {
+                    $smtpUser = ''
+                    $smtpPass = ''
+                }
+                $sharedSmtp = @{ SmtpServer = $smtpServer; Port = $smtpPort; UseSsl = $useSsl; Username = $smtpUser; Password = $smtpPass }
+            }
+
+            $fromAddr = Read-Host "  From address"
+            $toAddr   = Read-Host "  To address"
+
+            $emailConfig = @{
+                Enabled    = $true
+                SmtpServer = $smtpServer
+                Port       = $smtpPort
+                UseSsl     = $useSsl
+                From       = $fromAddr
+                To         = $toAddr
+                Username   = $smtpUser
+                Password   = $smtpPass
+            }
+            Write-Host "  [OK] Report will be emailed to $toAddr" -ForegroundColor Green
+        }
+
         $taskConfigs += [PSCustomObject]@{
-            Name      = $fn
-            Frequency = $freq
-            Time      = $timeStr
-            Trigger   = $trigger
+            Name        = $fn
+            Frequency   = $freq
+            Time        = $timeStr
+            Trigger     = $trigger
+            EmailConfig = $emailConfig
         }
-    }
-
-    # --- Step 5: Email ---
-    Write-Banner "Step 5 of 5 - Email Reports"
-    Write-Host "`n  Optionally email the report file as an attachment after each run." -ForegroundColor White
-
-    $emailConfig = @{ Enabled = $false }
-
-    $wantEmail = Read-Host "  Send reports by email? (Y/N)"
-    if ($wantEmail -match '^[Yy]') {
-
-        $smtpServer = Read-Host "  SMTP server (e.g. smtp.office365.com)"
-
-        $portRaw = Read-Host "  SMTP port (default 587)"
-        $smtpPort = if ([string]::IsNullOrWhiteSpace($portRaw)) { 587 } else { [int]$portRaw }
-
-        $sslAnswer = Read-MenuChoice -Prompt "  Use SSL/TLS?" -Options @('Yes', 'No')
-        $useSsl    = $sslAnswer -eq 'Yes'
-
-        $fromAddr = Read-Host "  From address (e.g. reports@corp.com)"
-        $toAddr   = Read-Host "  To address   (e.g. admin@corp.com)"
-
-        $authAnswer = Read-MenuChoice -Prompt "  SMTP authentication?" -Options @('Username and password', 'No authentication (relay)')
-        if ($authAnswer -eq 'Username and password') {
-            $smtpUser    = Read-Host "  SMTP username"
-            $smtpSecure  = Read-Host "  SMTP password" -AsSecureString
-            $smtpPass    = Get-PlainText -Secure $smtpSecure
-        } else {
-            $smtpUser = ''
-            $smtpPass = ''
-        }
-
-        $emailConfig = @{
-            Enabled    = $true
-            SmtpServer = $smtpServer
-            Port       = $smtpPort
-            UseSsl     = $useSsl
-            From       = $fromAddr
-            To         = $toAddr
-            Username   = $smtpUser
-            Password   = $smtpPass
-        }
-
-        Write-Host ""
-        Write-Host "  [OK] Reports will be emailed to $toAddr after each run." -ForegroundColor Green
     }
 
     # --- Confirm ---
     Write-Banner "Review - Tasks to Register"
-    $taskConfigs | Format-Table Name, Frequency, Time -AutoSize
-    if ($emailConfig.Enabled) {
-        Write-Host "  Email : $($emailConfig.From) -> $($emailConfig.To) via $($emailConfig.SmtpServer):$($emailConfig.Port)" -ForegroundColor Cyan
-    } else {
-        Write-Host "  Email : Disabled" -ForegroundColor DarkGray
-    }
+    $taskConfigs | ForEach-Object {
+        $emailSummary = if ($_.EmailConfig.Enabled) { $_.EmailConfig.To } else { 'No email' }
+        [PSCustomObject]@{ Name = $_.Name; Frequency = $_.Frequency; Time = $_.Time; Email = $emailSummary }
+    } | Format-Table -AutoSize
     $confirm = Read-Host "`n  Proceed? (Y/N)"
     if ($confirm -notmatch '^[Yy]') {
         Write-Host "`n  Cancelled." -ForegroundColor Yellow
@@ -350,7 +355,7 @@ $emailBlock
             -Account     $account `
             -Password    $plainPwd `
             -BasePath    $OutputBasePath `
-            -EmailConfig $emailConfig
+            -EmailConfig $cfg.EmailConfig
     }
 
     # --- Done ---
@@ -358,8 +363,9 @@ $emailBlock
     Write-Host "`n  Tasks registered under \ADOpsKit\ in Task Scheduler."
     Write-Host "  Reports   : $OutputBasePath\<FunctionName>\"
     Write-Host "  Logs      : $OutputBasePath\Logs\"
-    if ($emailConfig.Enabled) {
-        Write-Host "  Email     : Reports will be sent to $($emailConfig.To) after each run." -ForegroundColor Cyan
+    $emailEnabled = $taskConfigs | Where-Object { $_.EmailConfig.Enabled }
+    if ($emailEnabled) {
+        Write-Host "  Email     : $($emailEnabled.Count) task(s) configured to send reports by email." -ForegroundColor Cyan
     }
     Write-Host ""
     Write-Host "  Verify with:"

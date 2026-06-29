@@ -11,7 +11,7 @@
 RootModule = 'ADOpsKit.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.1.3'
+ModuleVersion = '1.1.4'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -118,7 +118,7 @@ PrivateData = @{
         # IconUri = ''
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'v1.1.3 — Register-ADOpsKitScheduledTasks now optionally emails each report as an attachment after every scheduled run (SMTP, SSL, and credential support).'
+        ReleaseNotes = 'v1.1.4 — Register-ADOpsKitScheduledTasks now supports per-task email recipients — each scheduled function can send its report to a different address.'
 
     } # End of PSData hashtable
 

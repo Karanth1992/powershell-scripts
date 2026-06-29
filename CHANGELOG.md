@@ -29,10 +29,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## ADOpsKit Module
 
+### [1.1.4] – 2026-06-29
+
+#### Changed
+- `Register-ADOpsKitScheduledTasks` — email is now configured **per task** instead of globally. Each function can send its report to a different recipient address. SMTP server settings (server, port, SSL, credentials) are prompted once and can be reused for subsequent tasks. The wizard is now 4 steps instead of 5 (schedule and email collected together per function).
+
 ### [1.1.3] – 2026-06-29
 
 #### Added
-- `Register-ADOpsKitScheduledTasks` — new Step 5 "Email Reports" in the wizard. After each scheduled run, the generated report is emailed as an attachment. Supports SMTP server, port, SSL/TLS, From/To addresses, and optional SMTP authentication (username + password). Email failure is non-fatal — the task logs a warning and continues.
+- `Register-ADOpsKitScheduledTasks` — new "Email Reports" step in the wizard. After each scheduled run, the generated report is emailed as an attachment. Supports SMTP server, port, SSL/TLS, From/To addresses, and optional SMTP authentication (username + password). Email failure is non-fatal — the task logs a warning and continues.
 
 ### [1.1.2] – 2026-06-28
 
