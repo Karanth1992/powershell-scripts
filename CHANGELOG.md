@@ -29,6 +29,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## ADOpsKit Module
 
+### [1.1.5] – 2026-06-29
+
+#### Fixed
+- `Get-AccountLockoutReport` — `LookbackMilliseconds` parameter type changed from `[int]` to `[long]`. The default value of `4233600000` (49 days in milliseconds) exceeded `Int32` max (2,147,483,647), causing a parameter binding error on every run.
+- `Get-AccountLockoutReport` — `Copy-Item` errors when no lockout events are found. The function now guards each copy with `Test-Path` so a clean environment (no lockouts) completes silently.
+
 ### [1.1.4] – 2026-06-29
 
 #### Changed

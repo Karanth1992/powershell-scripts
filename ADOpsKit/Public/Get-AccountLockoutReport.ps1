@@ -49,7 +49,7 @@ function Get-AccountLockoutReport {
     param (
         [string]$TempPath            = 'C:\ADOpsKit\Reports\Get-AccountLockoutReport',
         [string]$SharedPath          = 'C:\ADOpsKit\Reports\Get-AccountLockoutReport',
-        [int]$LookbackMilliseconds   = 4233600000
+        [long]$LookbackMilliseconds  = 4233600000
     )
 
     # ============ FUNCTIONS ============
@@ -191,9 +191,9 @@ tr:nth-child(even) td { background:#f8f8fc; }
 
     Remove-ExistingFile -Files @($shareLocklist, $shareLockCsv, $shareLockHtml)
 
-    Copy-Item $fileLockCsvTemp $shareLockCsv  -Force
-    Copy-Item $fileLockHtml    $shareLockHtml -Force
-    Copy-Item $fileLockList    $shareLocklist -Force
+    if (Test-Path $fileLockCsvTemp) { Copy-Item $fileLockCsvTemp $shareLockCsv  -Force }
+    if (Test-Path $fileLockHtml)    { Copy-Item $fileLockHtml    $shareLockHtml -Force }
+    if (Test-Path $fileLockList)    { Copy-Item $fileLockList    $shareLocklist -Force }
 
     Write-ProgressInfo "Reports written to $SharedPath" -Color Green
 

@@ -40,6 +40,7 @@ Install-Module ADOpsKit
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **1.1.5** | 2026-06-29 | Fix `Get-AccountLockoutReport` — Int32 overflow on default lookback value; fix Copy-Item errors when no lockouts exist |
 | **1.1.4** | 2026-06-29 | `Register-ADOpsKitScheduledTasks` — per-task email recipients; each function can send its report to a different address |
 | **1.1.3** | 2026-06-29 | `Register-ADOpsKitScheduledTasks` — email reports as attachments after each run (SMTP, SSL, auth support) |
 | **1.1.2** | 2026-06-28 | Fix `Register-ADOpsKitScheduledTasks` — ambiguous parameter set error when registering tasks (`-Principal` and `-Password` conflict on `Register-ScheduledTask`) |
