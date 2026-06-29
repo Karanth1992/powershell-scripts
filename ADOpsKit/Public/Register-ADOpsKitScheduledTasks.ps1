@@ -156,6 +156,11 @@ function Register-ADOpsKitScheduledTasks {
 "@
         }
 
+        # Write script to a .ps1 file — avoids all escaping issues with -Command
+        $scriptDir  = Join-Path $BasePath 'Scripts'
+        if (-not (Test-Path $scriptDir)) { New-Item -ItemType Directory -Path $scriptDir -Force | Out-Null }
+        $scriptFile = Join-Path $scriptDir "$TaskName.ps1"
+
         $fullScript = @"
 Start-Transcript -Path '$logFile' -Append -Force
 try {
@@ -164,15 +169,15 @@ try {
     $ScriptBlock
 $emailBlock
 } catch {
-    Write-Error "ADOpsKit task '$TaskName' failed: ``$_"
+    Write-Error "ADOpsKit task '$TaskName' failed: `$_"
 } finally {
     Stop-Transcript
 }
 "@
+        $fullScript | Set-Content -Path $scriptFile -Encoding UTF8
 
-        $psExe    = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-        $escaped  = $fullScript -replace '"', '\"'
-        $action   = New-ScheduledTaskAction -Execute $psExe -Argument "-NonInteractive -NoProfile -ExecutionPolicy Bypass -Command `"$escaped`""
+        $psExe  = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+        $action = New-ScheduledTaskAction -Execute $psExe -Argument "-NonInteractive -NoProfile -ExecutionPolicy Bypass -File `"$scriptFile`""
         $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 2) -MultipleInstances IgnoreNew -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5)
 
         $existing = Get-ScheduledTask -TaskPath '\ADOpsKit\' -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -340,12 +345,12 @@ $emailBlock
         'Get-AccountLockoutReport'         = "Get-AccountLockoutReport -TempPath '$OutputBasePath\Get-AccountLockoutReport' -SharedPath '$OutputBasePath\Get-AccountLockoutReport'"
         'Get-InsecureLDAPBinds'            = "Get-InsecureLDAPBinds -Hours 24 -OutputPath '$OutputBasePath\Get-InsecureLDAPBinds'"
         'Get-ADForestHealth'               = "Get-ADForestHealth -OutputFolder '$OutputBasePath\Get-ADForestHealth'"
-        'Test-DCPortHealth'                = "Test-DCPortHealth -TimeoutSeconds 5 -ExportPath '$OutputBasePath\Test-DCPortHealth\`$(Get-Date -Format ''yyyy-MM-dd'')_DCPortHealth.csv'"
-        'Get-EntraConnectSyncStatus'       = "Get-EntraConnectSyncStatus -ExportPath '$OutputBasePath\Get-EntraConnectSyncStatus\`$(Get-Date -Format ''yyyy-MM-dd'')_EntraConnectStatus.csv'"
-        'Get-GPOInventory'                 = "Get-GPOInventory -DomainName '$domainName' -OutputPath '$OutputBasePath\Get-GPOInventory\`$(Get-Date -Format ''yyyy-MM-dd'')_GPOInventory.html'"
-        'Get-GPOInventoryWithSettings'     = "Get-GPOInventoryWithSettings -DomainName '$domainName' -OutputPath '$OutputBasePath\Get-GPOInventoryWithSettings\`$(Get-Date -Format ''yyyy-MM-dd'')_GPOInventoryWithSettings.html'"
+        'Test-DCPortHealth'                = "`$date = Get-Date -Format 'yyyy-MM-dd'; Test-DCPortHealth -TimeoutSeconds 5 -ExportPath `"$OutputBasePath\Test-DCPortHealth\`${date}_DCPortHealth.csv`""
+        'Get-EntraConnectSyncStatus'       = "`$date = Get-Date -Format 'yyyy-MM-dd'; Get-EntraConnectSyncStatus -ExportPath `"$OutputBasePath\Get-EntraConnectSyncStatus\`${date}_EntraConnectStatus.csv`""
+        'Get-GPOInventory'                 = "`$date = Get-Date -Format 'yyyy-MM-dd'; Get-GPOInventory -DomainName '$domainName' -OutputPath `"$OutputBasePath\Get-GPOInventory\`${date}_GPOInventory.html`""
+        'Get-GPOInventoryWithSettings'     = "`$date = Get-Date -Format 'yyyy-MM-dd'; Get-GPOInventoryWithSettings -DomainName '$domainName' -OutputPath `"$OutputBasePath\Get-GPOInventoryWithSettings\`${date}_GPOInventoryWithSettings.html`""
         'Get-ADArchitectureAssessment'     = "Get-ADArchitectureAssessment -DomainName '$domainName' -OutputFolder '$OutputBasePath\Get-ADArchitectureAssessment'"
-        'Get-ADReplicationTopologyDiagram' = "Get-ADReplicationTopologyDiagram -OutputPath '$OutputBasePath\Get-ADReplicationTopologyDiagram\`$(Get-Date -Format ''yyyy-MM-dd'')_ADReplicationTopology.html'"
+        'Get-ADReplicationTopologyDiagram' = "`$date = Get-Date -Format 'yyyy-MM-dd'; Get-ADReplicationTopologyDiagram -OutputPath `"$OutputBasePath\Get-ADReplicationTopologyDiagram\`${date}_ADReplicationTopology.html`""
     }
 
     foreach ($cfg in $taskConfigs) {

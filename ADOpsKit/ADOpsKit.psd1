@@ -11,7 +11,7 @@
 RootModule = 'ADOpsKit.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.1.5'
+ModuleVersion = '1.1.6'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -118,7 +118,7 @@ PrivateData = @{
         # IconUri = ''
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'v1.1.5 — Fix Get-AccountLockoutReport: LookbackMilliseconds Int32 overflow (changed to long); fix Copy-Item errors when no lockout files are generated.'
+        ReleaseNotes = 'v1.1.6 — Fix Register-ADOpsKitScheduledTasks: task scripts now written to .ps1 files (avoids -Command escaping issues); fix dated filenames using ${date} variable syntax.'
 
     } # End of PSData hashtable
 

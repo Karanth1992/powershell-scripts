@@ -29,6 +29,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## ADOpsKit Module
 
+### [1.1.6] – 2026-06-29
+
+#### Fixed
+- `Register-ADOpsKitScheduledTasks` — task scripts are now written to `.ps1` files under `OutputBasePath\Scripts\` and called with `-File` instead of being embedded in a `-Command` string. This eliminates all escaping issues that caused dated filenames and variables to not expand at runtime.
+- `Register-ADOpsKitScheduledTasks` — dated output paths now use `$date = Get-Date -Format 'yyyy-MM-dd'` with `${date}_filename` syntax to correctly expand the date variable inside double-quoted strings.
+
 ### [1.1.5] – 2026-06-29
 
 #### Fixed
