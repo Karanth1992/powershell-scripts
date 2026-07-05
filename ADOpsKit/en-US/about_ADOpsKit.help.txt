@@ -33,7 +33,15 @@ SCHEDULED TASKS
     Tasks for any combination of ADOpsKit functions. Tasks are registered under the
     \ADOpsKit\ folder in Task Scheduler.
 
+    Service account credentials are validated up front (batch logon check, which
+    also verifies the 'Log on as a batch job' right). Group Managed Service
+    Accounts (gMSA) are supported as a passwordless alternative. The chosen setup
+    is saved (without passwords) to ADOpsKitTasks.config.json and can be replayed
+    with -ConfigPath. Reports older than -RetentionDays (default 90) are cleaned
+    up after each run, and task exit codes surface failures in Task Scheduler.
+
         Register-ADOpsKitScheduledTasks
+        Register-ADOpsKitScheduledTasks -ConfigPath 'C:\ADOpsKit\Reports\ADOpsKitTasks.config.json'
 
 FUNCTIONS
     Get-ADReplicationTopologyDiagram

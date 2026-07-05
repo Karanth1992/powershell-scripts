@@ -11,7 +11,7 @@
 RootModule = 'ADOpsKit.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.1.6'
+ModuleVersion = '1.2.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -118,7 +118,7 @@ PrivateData = @{
         # IconUri = ''
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'v1.1.6 — Fix Register-ADOpsKitScheduledTasks: task scripts now written to .ps1 files (avoids -Command escaping issues); fix dated filenames using ${date} variable syntax.'
+        ReleaseNotes = 'v1.2.0 — Register-ADOpsKitScheduledTasks overhaul: upfront credential validation via batch logon (checks password AND Log on as a batch job right); gMSA support; -ConfigPath replay of saved setup; -RetentionDays report cleanup; Scripts folder ACL restricted (task scripts can embed SMTP credentials); task exit codes surface failures in Task Scheduler; log rotation at 10 MB; -WhatIf honored; run-time input validated; fixed quoting of embedded values and broken unauthenticated-relay email path.'
 
     } # End of PSData hashtable
 
