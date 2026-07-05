@@ -40,6 +40,7 @@ Install-Module ADOpsKit
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **1.2.0** | 2026-07-05 | `Register-ADOpsKitScheduledTasks` overhaul — upfront credential validation (batch logon check), gMSA support, `-ConfigPath` setup replay, `-RetentionDays` report cleanup, Scripts folder ACL restriction, task exit codes, log rotation, `-WhatIf` support, quoting fixes |
 | **1.1.6** | 2026-06-29 | Fix `Register-ADOpsKitScheduledTasks` — scripts written to `.ps1` files; dated filenames now expand correctly at runtime |
 | **1.1.5** | 2026-06-29 | Fix `Get-AccountLockoutReport` — Int32 overflow on default lookback value; fix Copy-Item errors when no lockouts exist |
 | **1.1.4** | 2026-06-29 | `Register-ADOpsKitScheduledTasks` — per-task email recipients; each function can send its report to a different address |

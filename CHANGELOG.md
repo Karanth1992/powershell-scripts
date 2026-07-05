@@ -29,6 +29,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## ADOpsKit Module
 
+### [1.2.0] – 2026-07-05
+
+#### Added
+- `Register-ADOpsKitScheduledTasks` — service account credentials are validated up front with a batch logon check (`LogonUser` / `LOGON32_LOGON_BATCH`), verifying both the password and the *Log on as a batch job* right before any prompts are wasted. Distinguishes wrong password, locked out, expired password, disabled account, and missing batch right.
+- `Register-ADOpsKitScheduledTasks` — Group Managed Service Account (gMSA) support as a passwordless alternative; verified with `Test-ADServiceAccount` and registered via `New-ScheduledTaskPrincipal`.
+- `Register-ADOpsKitScheduledTasks` — `-ConfigPath` parameter replays a previously saved setup (`ADOpsKitTasks.config.json`, saved without passwords after each successful run); only passwords and the final confirmation are prompted.
+- `Register-ADOpsKitScheduledTasks` — `-RetentionDays` parameter (default 90, 0 disables): each task deletes its own reports older than the cutoff after each run. Transcript logs rotate to `.log.old` at 10 MB.
+- `Register-ADOpsKitScheduledTasks` — generated task scripts exit 0 (success), 1 (function failed), or 2 (email failed) so failures surface as Last Run Result in Task Scheduler.
+- `Register-ADOpsKitScheduledTasks` — `-WhatIf` / `-Confirm` honored via `ShouldProcess` for all mutations.
+
+#### Fixed
+- `Register-ADOpsKitScheduledTasks` — values embedded in generated task scripts (passwords, addresses, paths, domain) are now quote-escaped; an apostrophe in an SMTP password no longer breaks the generated script.
+- `Register-ADOpsKitScheduledTasks` — the "No authentication (relay)" email option generated a broken `PSCredential('')`; the credential is now only emitted when a username was provided.
+- `Register-ADOpsKitScheduledTasks` — run-time prompts (`HH:mm`) are validated with a retry loop instead of throwing at `New-ScheduledTaskTrigger`.
+
+#### Security
+- `Register-ADOpsKitScheduledTasks` — the `Scripts` folder ACL is restricted to SYSTEM, Administrators, and the service account, since task scripts with SMTP authentication embed the SMTP password.
+
 ### [1.1.6] – 2026-06-29
 
 #### Fixed

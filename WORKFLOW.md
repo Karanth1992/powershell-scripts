@@ -6,7 +6,7 @@
 flowchart LR
     subgraph INSTALL["📦 Install"]
         PSG["PowerShell Gallery\nInstall-Module ADOpsKit"]
-        MOD["ADOpsKit Module\nv1.1.6 · 11 functions"]
+        MOD["ADOpsKit Module\nv1.2.0 · 11 functions"]
         PSG --> MOD
     end
 
@@ -224,7 +224,8 @@ flowchart TD
 
 | Version | Date | What changed |
 |---------|------|-------------|
-| **1.1.6** | 2026-06-29 | Fix `Register-ADOpsKitScheduledTasks` — scripts written to `.ps1` files; dated filenames now expand correctly |
+| **1.2.0** | 2026-07-05 | `Register-ADOpsKitScheduledTasks` overhaul — credential validation, gMSA, config replay, retention, exit codes, ACL hardening |
+| 1.1.6 | 2026-06-29 | Fix `Register-ADOpsKitScheduledTasks` — scripts written to `.ps1` files; dated filenames now expand correctly |
 | 1.1.5 | 2026-06-29 | Fix `Get-AccountLockoutReport` — Int32 overflow; Copy-Item errors when no lockouts |
 | 1.1.4 | 2026-06-29 | Per-task email recipients |
 | 1.1.3 | 2026-06-29 | Email report delivery after each scheduled run |
