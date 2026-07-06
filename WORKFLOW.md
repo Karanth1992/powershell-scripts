@@ -189,34 +189,7 @@ flowchart LR
 
 > Separate repo: [github.com/Karanth1992/ADSetupKit](https://github.com/Karanth1992/ADSetupKit)
 > Use ADSetupKit **before** ADOpsKit — it provisions the server that ADOpsKit will then monitor.
-
-```mermaid
-flowchart TD
-    START([Start-ADSKSetupWizard]) --> N
-
-    N["1 · Network Config\nSet-ADSKNetworkConfig\nStatic IP · DNS · Gateway"] --> R
-
-    R["2 · Rename Computer\nRename-ADSKComputer\nBefore domain join"] --> A
-
-    A["3 · Install Applications\nInstall-ADSKApplications\nNumbered scripts in order\n01-app.ps1 · 02-agent.bat"] --> ROLE
-
-    ROLE["4 · Install Roles\nInstall-ADSKRoles\nADDS · DNS · DHCP · IIS\nGPMC · RSAT · File · Print"] --> SCENE
-
-    SCENE{5 · AD Scenario}
-    SCENE -->|New forest| F["New-ADSKForest\nFirst DC in new domain"]
-    SCENE -->|Replica DC| DC["Add-ADSKDomainController\nJoin existing domain as DC"]
-    SCENE -->|Child domain| CD["New-ADSKChildDomain\nNew child under parent"]
-    SCENE -->|Member server| MS["Add-ADSKDomainMember\nJoin domain — no DC role"]
-    SCENE -->|Standalone| SA["No AD role\nServer only"]
-
-    F & DC & CD --> REBOOT(["Mandatory reboot\nDC promotion requires restart"])
-    REBOOT --> POST
-
-    POST["6 · Post-Restart Tasks\nScheduled task auto-runs after reboot\n· New-ADSKSite\n· New-ADSKDhcpScope\n· Set-ADSKDnsForwarder"]
-
-    MS & SA --> DONE([Done — ready for ADOpsKit])
-    POST --> DONE
-```
+> Its provisioning workflow diagrams now live in that repo's own [`WORKFLOW.md`](https://github.com/Karanth1992/ADSetupKit/blob/main/WORKFLOW.md).
 
 ---
 
