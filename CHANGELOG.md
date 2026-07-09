@@ -29,6 +29,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## ADOpsKit Module
 
+### [1.3.0] – 2026-07-09
+
+#### Added
+- `Test-ADDCDiagHealth` — runs the full dcdiag test suite (every `Starting test:` / `passed test` / `failed test` pair, not a fixed subset) against every domain controller. Checks basic reachability (ping + RPC port 135) before running dcdiag so an offline DC is reported immediately instead of hanging. Persists per-DC state to JSON and only emails an alert on a status change (Healthy ↔ Failing/Unreachable) or a reminder after `-RepeatAlertAfterHours` (default 4) of persistent failure — a healthy forest produces no email at all. `-Tests` parameter allows narrowing to a lighter, targeted test list to reduce per-run load; defaults to dcdiag's full set. Read-only against AD; no WinRM.
+- `Register-ADDCDiagHealthMonitor` — registers `Test-ADDCDiagHealth` as a Scheduled Task under `\ADOpsKit\` with a repeating trigger (default every 5 minutes), turning it into a near-real-time DC monitoring agent. Defaults to running as SYSTEM (no password to manage); `-RunAsCredential` supported for cross-domain scenarios. Restricts the generated Scripts folder ACL when an SMTP credential is embedded, matching `Register-ADOpsKitScheduledTasks`. Warns (via WMI `DomainRole`, no WinRM) if run on a domain controller itself, since the recurring task would then add continuous polling load to that DC. `-WhatIf` / `-Confirm` supported.
+
+---
+
 ### [1.2.0] – 2026-07-05
 
 #### Added
