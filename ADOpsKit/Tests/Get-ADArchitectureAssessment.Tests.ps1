@@ -65,11 +65,13 @@ Describe "Get-ADArchitectureAssessment" {
         }
 
         It "Should write an HTML report file" {
-            Get-ChildItem $script:outputFolder -Filter '*.html' | Should -Not -BeNullOrEmpty
+            # Written under a timestamped ADArchitectureAssessment_<yyyyMMdd_HHmmss>
+            # subfolder of -OutputFolder, not directly in it.
+            Get-ChildItem $script:outputFolder -Filter '*.html' -Recurse | Should -Not -BeNullOrEmpty
         }
 
         It "Should write a JSON report file" {
-            Get-ChildItem $script:outputFolder -Filter '*.json' | Should -Not -BeNullOrEmpty
+            Get-ChildItem $script:outputFolder -Filter '*.json' -Recurse | Should -Not -BeNullOrEmpty
         }
     }
 }

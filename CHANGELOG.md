@@ -29,6 +29,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## ADOpsKit Module
 
+### Unreleased
+
+#### Fixed
+- `Get-AccountLockoutReport` — with default parameters, `-TempPath` and `-SharedPath` point at the same folder. The "clear destination before copy" step deleted the report files that had just been generated there, and the `Test-Path` guards around the subsequent `Copy-Item` calls then silently skipped the copy — so the function produced **no output files at all** when run with defaults, regardless of whether any accounts were locked out. Fixed by skipping the clear-then-copy step entirely when `-TempPath` and `-SharedPath` resolve to the same location.
+
 ### [1.3.0] – 2026-07-09
 
 #### Added

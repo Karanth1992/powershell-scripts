@@ -189,13 +189,26 @@ tr:nth-child(even) td { background:#f8f8fc; }
 
     # ============ COPY TO SHARED PATH ============
 
-    Remove-ExistingFile -Files @($shareLocklist, $shareLockCsv, $shareLockHtml)
+    $tempAndSharedAreSameLocation =
+        [System.IO.Path]::GetFullPath($TempPath).TrimEnd('\') -ieq
+        [System.IO.Path]::GetFullPath($SharedPath).TrimEnd('\')
 
-    if (Test-Path $fileLockCsvTemp) { Copy-Item $fileLockCsvTemp $shareLockCsv  -Force }
-    if (Test-Path $fileLockHtml)    { Copy-Item $fileLockHtml    $shareLockHtml -Force }
-    if (Test-Path $fileLockList)    { Copy-Item $fileLockList    $shareLocklist -Force }
+    if ($tempAndSharedAreSameLocation) {
+        # TempPath and SharedPath resolve to the same folder (the default).
+        # The report files are already there - clearing "the shared copy"
+        # first would delete the files that were just generated, so the
+        # clear-then-copy step below is skipped entirely in this case.
+        Write-ProgressInfo "TempPath and SharedPath are the same location - reports already at $SharedPath" -Color Green
+    }
+    else {
+        Remove-ExistingFile -Files @($shareLocklist, $shareLockCsv, $shareLockHtml)
 
-    Write-ProgressInfo "Reports written to $SharedPath" -Color Green
+        if (Test-Path $fileLockCsvTemp) { Copy-Item $fileLockCsvTemp $shareLockCsv  -Force }
+        if (Test-Path $fileLockHtml)    { Copy-Item $fileLockHtml    $shareLockHtml -Force }
+        if (Test-Path $fileLockList)    { Copy-Item $fileLockList    $shareLocklist -Force }
+
+        Write-ProgressInfo "Reports written to $SharedPath" -Color Green
+    }
 
     # ============ EMAIL SUMMARY (uncomment to enable) ============
     # $emailSubject = "User Lockout Report - $userCount account(s) locked"
