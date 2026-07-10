@@ -35,11 +35,14 @@ flowchart LR
     end
 
     subgraph CICD["🔁 CI / CD"]
-        GH["GitHub Push"]
+        GH["GitHub Push\nto main"]
         PSSA["PSScriptAnalyzer\nLint"]
         PES["Pester\nUnit Tests"]
+        TAG["git tag v&lt;version&gt;\ngit push --tags"]
+        GATE["Tag == manifest version?\nCHANGELOG entry present?\nLint + test pass?"]
         PUB["Publish-Module\nPowerShell Gallery"]
-        GH --> PSSA --> PES --> PUB
+        GH --> PSSA --> PES
+        PES --> TAG --> GATE --> PUB
         PUB --> PSG
     end
 ```
@@ -162,26 +165,49 @@ C:\ADOpsKit\Reports\
 
 ## 6 · CI / CD Pipeline
 
+Two workflows run in GitHub Actions. `pssa.yml` lints and tests every push
+and pull request to `main`. `publish.yml` gates and performs the PowerShell
+Gallery release, and only runs when a `v<ModuleVersion>` tag is pushed —
+regular commits to `main` never publish by themselves.
+
 ```mermaid
 flowchart LR
     PUSH["git push\nto main"] --> PSSA
 
-    subgraph GHA["GitHub Actions"]
+    subgraph CI["pssa.yml — every push / PR to main"]
         PSSA["PSScriptAnalyzer\nLint all .ps1 files\n.pssa.psd1 exclusions applied"]
-        PES["Pester\nUnit tests\n- Module loads\n- 11 functions exported\n- Each has Synopsis + Description"]
+        PES["Pester\nUnit tests, Integration tag excluded"]
         PSSA --> PES
     end
 
-    PES -->|Pass| BUMP["Bump ModuleVersion\nin ADOpsKit.psd1"]
     PES -->|Fail| FIX["Fix lint or test\nfailure — repush"]
     FIX --> PUSH
 
-    BUMP --> PUB["Publish-Module\n-NuGetApiKey ..."]
+    PES -->|Pass| BUMP["Bump ModuleVersion in ADOpsKit.psd1\nAdd a CHANGELOG.md entry\nCommit to main"]
+    BUMP --> TAG["git tag v&lt;ModuleVersion&gt;\ngit push origin v&lt;ModuleVersion&gt;"]
+    TAG --> GATE
+
+    subgraph PUBLISH["publish.yml — triggered by tag push"]
+        direction LR
+        V1["Tag ==\nmanifest ModuleVersion?"] --> V2["CHANGELOG.md has\nan entry for this version?"]
+        V2 --> V3["PSScriptAnalyzer\n+ Pester, re-run"]
+    end
+
+    V3 -->|Any check fails| ABORT(["Publish aborted\nFix and re-tag"])
+    V3 -->|All pass| PUB["Publish-Module\n-NuGetApiKey $env:PSGALLERY_API_KEY"]
     PUB --> GAL(["PowerShell Gallery\nInstall-Module ADOpsKit\nUpdate-Module ADOpsKit"])
 
     style GAL fill:#d1fae5,stroke:#10b981,color:#065f46
     style FIX fill:#fee2e2,stroke:#ef4444,color:#991b1b
+    style ABORT fill:#fee2e2,stroke:#ef4444,color:#991b1b
 ```
+
+**Releasing a new version:**
+
+1. Bump `ModuleVersion` in [`ADOpsKit/ADOpsKit.psd1`](ADOpsKit/ADOpsKit.psd1) and add a matching `[<version>]` entry to [`CHANGELOG.md`](CHANGELOG.md).
+2. Commit and push to `main` — `pssa.yml` lints and tests the change.
+3. Tag the release and push the tag: `git tag v1.4.0 && git push origin v1.4.0`.
+4. `publish.yml` re-verifies the tag matches the manifest version, checks for a CHANGELOG entry, re-runs lint + tests, then runs `Publish-Module` using the `PSGALLERY_API_KEY` repository secret.
 
 ---
 
