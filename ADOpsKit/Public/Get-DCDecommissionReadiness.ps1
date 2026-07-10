@@ -43,8 +43,6 @@
         The account running this script needs remote event log access on the target DC.
     #>
 
-    #Requires -Modules ActiveDirectory
-
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -118,6 +116,8 @@
     #endregion
 
     #region ── Init ─────────────────────────────────────────────────────────────────
+
+    Import-Module ActiveDirectory -ErrorAction Stop
 
     $StartTime  = Get-Date
     $Since      = $StartTime.AddDays(-$DaysBack)
