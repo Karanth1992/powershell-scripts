@@ -6,14 +6,14 @@
 flowchart LR
     subgraph INSTALL["📦 Install"]
         PSG["PowerShell Gallery\nInstall-Module ADOpsKit"]
-        MOD["ADOpsKit Module\nv1.2.0 · 11 functions"]
+        MOD["ADOpsKit Module\n14 functions"]
         PSG --> MOD
     end
 
     subgraph SETUP["⚙️ Setup"]
         WIZ["Register-ADOpsKit\nScheduledTasks\nInteractive wizard"]
         SCR["Scripts written to\nC:\\ADOpsKit\\Reports\\Scripts\\"]
-        TSK["Windows Task Scheduler\n\\ADOpsKit\\ · 9 tasks"]
+        TSK["Windows Task Scheduler\n\\ADOpsKit\\ · 8 tasks"]
         MOD --> WIZ
         WIZ --> SCR
         WIZ --> TSK
@@ -21,7 +21,7 @@ flowchart LR
 
     subgraph RUN["▶️ Run"]
         DAILY["Daily 06:00\n5 health & audit tasks"]
-        WEEKLY["Weekly Sunday 02:00\n4 inventory tasks"]
+        WEEKLY["Weekly Sunday 02:00\n3 inventory tasks"]
         MANUAL["Manual\nStart-ScheduledTask"]
         TSK --> DAILY & WEEKLY & MANUAL
     end
@@ -59,7 +59,7 @@ flowchart TD
 
     S2["Step 2 — Domain FQDN\ne.g. corp.contoso.com\nUsed by GPO and AD functions"] --> S3
 
-    S3["Step 3 — Select Functions\nMulti-select from 9 functions\nEnter 0 to select all"] --> LOOP
+    S3["Step 3 — Select Functions\nMulti-select from 8 functions\nEnter 0 to select all"] --> LOOP
 
     subgraph LOOP["Step 4 — Per-function loop"]
         direction LR
@@ -117,8 +117,7 @@ flowchart TD
 | `Get-AccountLockoutReport` | Daily 06:20 | `.html` · `.csv` · `.txt` |
 | `Get-InsecureLDAPBinds` | Daily 06:30 | `yyyy-MM-dd_InsecureLDAPBinds.csv` |
 | `Get-EntraConnectSyncStatus` | Daily 06:40 | `yyyy-MM-dd_EntraConnectStatus.csv` |
-| `Get-GPOInventory` | Weekly Sun 02:00 | `yyyy-MM-dd_GPOInventory.html` |
-| `Get-GPOInventoryWithSettings` | Weekly Sun 02:15 | `yyyy-MM-dd_GPOInventoryWithSettings.html` |
+| `Get-GPOInventoryWithSettings` | Weekly Sun 02:00 | `yyyy-MM-dd_GPOInventoryWithSettings.html` |
 | `Get-ADArchitectureAssessment` | Weekly Sun 02:30 | `.html` · `.json` · `Findings.csv` |
 | `Get-ADReplicationTopologyDiagram` | Weekly Sun 02:45 | `yyyy-MM-dd_ADReplicationTopology.html` |
 | `Enable-DCPerformanceBaseline` | Manual | Binary `.blg` perf logs on each DC |
@@ -142,8 +141,6 @@ C:\ADOpsKit\Reports\
 │   └── 2026-06-30_InsecureLDAPBinds.csv
 ├── Get-EntraConnectSyncStatus\
 │   └── 2026-06-30_EntraConnectStatus.csv
-├── Get-GPOInventory\
-│   └── 2026-06-30_GPOInventory.html
 ├── Get-GPOInventoryWithSettings\
 │   └── 2026-06-30_GPOInventoryWithSettings.html
 ├── Get-ADArchitectureAssessment\

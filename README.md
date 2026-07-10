@@ -29,12 +29,13 @@ Install-Module ADOpsKit
 | `Enable-DCPerformanceBaseline` | Deploys a `logman` performance Data Collector Set on each DC. |
 | `Get-AccountLockoutReport` | Reports locked accounts and traces lockout source via Event ID 4740. |
 | `Get-InsecureLDAPBinds` | Detects unsigned and simple LDAP binds via Event ID 2889. |
-| `Get-GPOInventory` | GPO inventory with links, permissions, status, and WMI filters. |
-| `Get-GPOInventoryWithSettings` | Extended GPO inventory including configured settings from `Get-GPOReport` XML. |
+| `Get-GPOInventoryWithSettings` | GPO inventory with links, permissions, status, WMI filters, and configured settings from `Get-GPOReport` XML. |
 | `Get-EntraConnectSyncStatus` | Entra Connect health — sync cycle, connector errors, pending exports, password sync. |
 | `Register-ADOpsKitScheduledTasks` | Interactive wizard to schedule any ADOpsKit function as a Windows Scheduled Task. |
 | `Test-ADDCDiagHealth` | Runs the full dcdiag test suite against every DC and emails an alert only on status change or a persistent-failure reminder — a near-real-time monitoring check. |
 | `Register-ADDCDiagHealthMonitor` | Registers `Test-ADDCDiagHealth` as a Scheduled Task on a short repeating interval (default 5 min), turning it into a real-time DC monitoring agent. |
+| `Invoke-ADRealtimeHeartbeat` | Lightweight per-DC heartbeat (TCP ports, SYSVOL/NETLOGON, required services) designed for 30-60 second polling; alerts via email/Slack only on state change. Complements `Test-ADDCDiagHealth`'s heavier, less-frequent full dcdiag sweep. |
+| `Get-DCDecommissionReadiness` | Pre-decommission scan of a single DC — FSMO roles, replication health, logon activity, DNS/SYSVOL/DFSR, sites/subnets, trusts, Global Catalog status, and a readiness checklist. |
 
 ---
 
@@ -42,6 +43,7 @@ Install-Module ADOpsKit
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **1.4.0** | 2026-07-11 | Added `Invoke-ADRealtimeHeartbeat` (30-60s per-DC heartbeat, state-diffed email/Slack alerting) and `Get-DCDecommissionReadiness` (pre-decommission readiness scan). Removed `Get-GPOInventory` (superseded by `Get-GPOInventoryWithSettings`). Fixed `Get-AccountLockoutReport` producing no output with default params, and two `Register-ADOpsKitScheduledTasks` bugs (unqualified account names, single-day weekly schedules) |
 | **1.3.0** | 2026-07-09 | Added `Test-ADDCDiagHealth` (full dcdiag suite, state-diffed alerting) and `Register-ADDCDiagHealthMonitor` (5-minute repeating Scheduled Task) for near-real-time DC monitoring with email alerts on status change |
 | **1.2.0** | 2026-07-05 | `Register-ADOpsKitScheduledTasks` overhaul — upfront credential validation (batch logon check), gMSA support, `-ConfigPath` setup replay, `-RetentionDays` report cleanup, Scripts folder ACL restriction, task exit codes, log rotation, `-WhatIf` support, quoting fixes |
 | **1.1.6** | 2026-06-29 | Fix `Register-ADOpsKitScheduledTasks` — scripts written to `.ps1` files; dated filenames now expand correctly at runtime |
@@ -102,6 +104,7 @@ powershell-scripts/
 | [Get-ADForestHealth.ps1](standalone/active-directory/health/Get-ADForestHealth.ps1) | Forest-wide DC health report — DCDiag, disk, CPU, memory, uptime. | Color-coded HTML |
 | [Test-DCPortHealth.ps1](standalone/active-directory/health/Test-DCPortHealth.ps1) | Tests critical AD TCP ports across all domain controllers. | Console table, CSV |
 | [Enable-DCPerformanceBaseline.ps1](standalone/active-directory/health/Enable-DCPerformanceBaseline.ps1) | Deploys a `logman` performance Data Collector Set on each DC. | Binary perf logs on each DC |
+| [Invoke-ADRealtimeHeartbeat-v1.1.ps1](standalone/active-directory/health/Invoke-ADRealtimeHeartbeat-v1.1.ps1) | Lightweight per-DC heartbeat (TCP ports, SYSVOL/NETLOGON, required services) for 30-60 second polling; alerts via email/Slack only on state change. | `latest.html` / `latest.json` + dated history |
 
 ### active-directory/audit
 
@@ -109,6 +112,7 @@ powershell-scripts/
 |--------|---------|--------|
 | [Get-InsecureLDAPBinds.ps1](standalone/active-directory/audit/Get-InsecureLDAPBinds.ps1) | Detects unsigned and simple LDAP binds via Event ID 2889. | Dated CSV |
 | [Get-AccountLockoutReport.ps1](standalone/active-directory/audit/Get-AccountLockoutReport.ps1) | Reports locked accounts and traces lockout source via Event ID 4740. | TXT, CSV, HTML |
+| [Get-DCDecommissionReadiness.ps1](standalone/active-directory/audit/Get-DCDecommissionReadiness.ps1) | Pre-decommission scan of a single DC — FSMO roles, replication health, logon activity, DNS/SYSVOL/DFSR, sites/subnets, trusts, Global Catalog status, and a readiness checklist. | Styled HTML |
 
 ### active-directory/inventory
 
@@ -167,8 +171,8 @@ All functions save reports to `C:\ADOpsKit\Reports\<FunctionName>\` by default, 
 C:\ADOpsKit\Reports\
 ├── Get-ADForestHealth\
 │   └── 2026-06-27_ADForestHealth.html
-├── Get-GPOInventory\
-│   └── 2026-06-27_GPOInventory.html
+├── Get-GPOInventoryWithSettings\
+│   └── 2026-06-27_GPOInventoryWithSettings.html
 ├── Test-DCPortHealth\
 │   └── 2026-06-27_DCPortHealth.csv
 └── Logs\

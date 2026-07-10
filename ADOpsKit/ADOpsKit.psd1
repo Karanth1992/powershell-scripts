@@ -11,7 +11,7 @@
 RootModule = 'ADOpsKit.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.3.0'
+ModuleVersion = '1.4.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -76,12 +76,13 @@ FunctionsToExport = @(
     'Test-DCPortHealth'
     'Get-ADArchitectureAssessment'
     'Get-ADReplicationTopologyDiagram'
-    'Get-GPOInventory'
     'Get-GPOInventoryWithSettings'
     'Get-EntraConnectSyncStatus'
     'Register-ADOpsKitScheduledTasks'
     'Test-ADDCDiagHealth'
     'Register-ADDCDiagHealthMonitor'
+    'Invoke-ADRealtimeHeartbeat'
+    'Get-DCDecommissionReadiness'
 )
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
@@ -120,7 +121,7 @@ PrivateData = @{
         # IconUri = ''
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'v1.2.0 — Register-ADOpsKitScheduledTasks overhaul: upfront credential validation via batch logon (checks password AND Log on as a batch job right); gMSA support; -ConfigPath replay of saved setup; -RetentionDays report cleanup; Scripts folder ACL restricted (task scripts can embed SMTP credentials); task exit codes surface failures in Task Scheduler; log rotation at 10 MB; -WhatIf honored; run-time input validated; fixed quoting of embedded values and broken unauthenticated-relay email path.'
+        ReleaseNotes = 'v1.4.0 — Added Invoke-ADRealtimeHeartbeat (lightweight 30-60s per-DC heartbeat, state-diffed email/Slack alerting) and Get-DCDecommissionReadiness (pre-decommission readiness scan: FSMO, replication, DNS/SYSVOL/DFSR, trusts, GC status). Removed Get-GPOInventory (superseded by Get-GPOInventoryWithSettings). Fixed Get-AccountLockoutReport producing no output with default -TempPath/-SharedPath. Fixed Register-ADOpsKitScheduledTasks silently misresolving unqualified service account names to local accounts, and weekly schedules only allowing a single day of week.'
 
     } # End of PSData hashtable
 

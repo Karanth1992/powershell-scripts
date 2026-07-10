@@ -29,10 +29,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## ADOpsKit Module
 
-### Unreleased
+### [1.4.0] – 2026-07-11
+
+#### Added
+- `Invoke-ADRealtimeHeartbeat` — promoted from `standalone/active-directory/health/Invoke-ADRealtimeHeartbeat-v1.1.ps1`, which was added earlier but never exported from the module. A lightweight, frequently-schedulable (every 30-60s) heartbeat check per DC — TCP reachability (LDAP, Kerberos, RPC, SMB, DNS by default), SYSVOL/NETLOGON share reachability, and required-service state via WMI/DCOM — complementary to `Test-ADDCDiagHealth`'s heavier, less-frequent full dcdiag sweep. Writes `latest.html`/`latest.json` plus retained dated history, alerts via email and/or Slack only on state change (with a repeat-alert suppression window), and supports `-WhatIf`. Read-only against AD and remote DCs.
+- `Get-DCDecommissionReadiness` — promoted from `standalone/active-directory/audit/Get-DCDecommissionReadiness.ps1`, which was likewise never exported from the module. Pre-decommission scan of a single DC: FSMO role holdings, replication health/queue/failures, recent logon activity (top Kerberos TGT requesters), DNS role and hosted zones, SYSVOL/DFSR health, site/subnet associations, Netlogon secure-channel activity, Directory Service event errors, active sessions, trust relationships, Global Catalog status, and a summary checklist of what needs to happen before demotion. Writes an HTML report and returns a structured result object. While promoting: fixed a latent WinRM dependency (`Get-SmbShare -CimSession` implicitly requires WinRM; swapped for a plain UNC path check, matching this module's WMI/DCOM/SMB-only design) and several `Set-StrictMode`-triggered crashes where `.Count` was accessed on a collection that comes back as a bare scalar (not an array) when exactly one event/result is returned — confirmed live against a domain with exactly one DFSR/Netlogon/DirectoryService event, which reliably triggered every one of them.
 
 #### Fixed
 - `Get-AccountLockoutReport` — with default parameters, `-TempPath` and `-SharedPath` point at the same folder. The "clear destination before copy" step deleted the report files that had just been generated there, and the `Test-Path` guards around the subsequent `Copy-Item` calls then silently skipped the copy — so the function produced **no output files at all** when run with defaults, regardless of whether any accounts were locked out. Fixed by skipping the clear-then-copy step entirely when `-TempPath` and `-SharedPath` resolve to the same location.
+- `Register-ADOpsKitScheduledTasks` — a service account entered without a `DOMAIN\` prefix or UPN suffix (e.g. `svc-adops` instead of `CONTOSO\svc-adops`) was silently reinterpreted by the batch-logon check as a **local** account instead of the intended domain account, producing a confusing failure (or a false success against an unrelated same-named local account). Now throws immediately with a clear message when the account has no domain qualifier, for both regular and gMSA accounts, and whether entered interactively or loaded via `-ConfigPath`.
+- `Register-ADOpsKitScheduledTasks` — weekly schedules only allowed a single day of week to be selected, even though `New-ScheduledTaskTrigger -DaysOfWeek` already supports multiple days. The day-of-week prompt now uses the same multi-select picker used for function selection.
+
+#### Removed
+- `Get-GPOInventory` — removed from the module; `Get-GPOInventoryWithSettings` is a superset (same links/permissions/status/WMI-filter data, plus configured settings) so there was no reason to keep both. The standalone script (`standalone/active-directory/inventory/Get-GPOInventory.ps1`) is unaffected.
 
 ### [1.3.0] – 2026-07-09
 

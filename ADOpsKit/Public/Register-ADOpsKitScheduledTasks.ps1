@@ -189,6 +189,18 @@ function Register-ADOpsKitScheduledTasks {
         return $Default
     }
 
+    function Assert-AccountHasDomainQualifier {
+        # A bare username (no DOMAIN\ prefix, no UPN @domain suffix) is not
+        # rejected by LogonUser - it is silently reinterpreted as a LOCAL
+        # account instead of the intended domain account, which can produce
+        # a confusing failure (or worse, a false success against an
+        # unrelated same-named local account). Fail loudly instead.
+        param([string]$Account)
+        if ($Account -notmatch '\\' -and $Account -notmatch '@') {
+            throw "Service account '$Account' has no domain qualifier. Use DOMAIN\username (or DOMAIN\name`$ for a gMSA) or a UPN (user@domain.com)."
+        }
+    }
+
     function Test-ServiceAccountCredential {
         <#
             Validates the account/password pair with a local batch logon
@@ -451,14 +463,13 @@ exit `$exitCode
         'Get-ADForestHealth',
         'Test-DCPortHealth',
         'Get-EntraConnectSyncStatus',
-        'Get-GPOInventory',
         'Get-GPOInventoryWithSettings',
         'Get-ADArchitectureAssessment',
         'Get-ADReplicationTopologyDiagram'
     )
 
     $dailySuggested  = @('Get-AccountLockoutReport','Get-InsecureLDAPBinds','Get-ADForestHealth','Test-DCPortHealth','Get-EntraConnectSyncStatus')
-    $weeklySuggested = @('Get-GPOInventory','Get-GPOInventoryWithSettings','Get-ADArchitectureAssessment','Get-ADReplicationTopologyDiagram')
+    $weeklySuggested = @('Get-GPOInventoryWithSettings','Get-ADArchitectureAssessment','Get-ADReplicationTopologyDiagram')
 
     # --- Load saved config (replay mode) ---
     $importedConfig = $null
@@ -499,6 +510,7 @@ exit `$exitCode
     if ($importedConfig) {
         $account = [string](Get-ConfigProp $importedConfig 'Account' '')
         if (-not $account) { throw "Config file has no 'Account' value." }
+        Assert-AccountHasDomainQualifier -Account $account
         $isGmsa = ([string](Get-ConfigProp $importedConfig 'AccountType' 'Regular')) -eq 'gMSA'
         Write-Host "  Account (from config): $account$(if ($isGmsa) { ' (gMSA)' })"
     } else {
@@ -515,6 +527,7 @@ exit `$exitCode
         do {
             if (-not $importedConfig) {
                 $account = Read-Host '  Enter gMSA account (DOMAIN\name$)'
+                Assert-AccountHasDomainQualifier -Account $account
                 if ($account -notmatch '\$$') { $account = $account + '$' }
             }
             Write-Host "  Verifying gMSA on this computer..." -ForegroundColor DarkGray
@@ -545,6 +558,7 @@ exit `$exitCode
         do {
             if (-not $importedConfig) {
                 $account = Read-Host "  Enter service account (DOMAIN\username)"
+                Assert-AccountHasDomainQualifier -Account $account
             }
             $securePwd = Read-Host "  Password for $account" -AsSecureString
             $plainPwd  = Get-PlainText -Secure $securePwd
@@ -617,7 +631,9 @@ exit `$exitCode
             }
             $freq = [string](Get-ConfigProp $t 'Frequency' 'Daily')
             if ($freq -ne 'Weekly') { $freq = 'Daily' }
-            $day     = [string](Get-ConfigProp $t 'DayOfWeek' 'Monday')
+            # @(...) normalizes both the old single-string DayOfWeek format
+            # and the current multi-day array format to an array.
+            $days    = @(Get-ConfigProp $t 'DayOfWeek' @('Monday')) | ForEach-Object { [string]$_ }
             $timeStr = [string](Get-ConfigProp $t 'Time' '06:00')
             $parsedTime = [datetime]::MinValue
             if (-not [datetime]::TryParseExact($timeStr, [string[]]@('HH:mm', 'H:mm'),
@@ -627,7 +643,7 @@ exit `$exitCode
                 $timeStr = '06:00'
             }
             $trigger = if ($freq -eq 'Weekly') {
-                New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek $day -At $timeStr
+                New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek $days -At $timeStr
             } else {
                 New-ScheduledTaskTrigger -Daily -At $timeStr
             }
@@ -661,7 +677,7 @@ exit `$exitCode
             $taskConfigs += [PSCustomObject]@{
                 Name        = $name
                 Frequency   = $freq
-                DayOfWeek   = if ($freq -eq 'Weekly') { $day } else { '' }
+                DayOfWeek   = if ($freq -eq 'Weekly') { $days } else { @() }
                 Time        = $timeStr
                 Trigger     = $trigger
                 EmailConfig = $emailConfig
@@ -693,15 +709,15 @@ exit `$exitCode
 
             # Schedule
             $freq = Read-MenuChoice -Prompt "  Frequency" -Options @('Daily', 'Weekly')
-            $day  = ''
+            $days = @()
 
             if ($freq -eq 'Daily') {
                 $timeStr = Read-RunTime -Prompt "  Run time" -Default '06:00'
                 $trigger = New-ScheduledTaskTrigger -Daily -At $timeStr
             } else {
-                $day     = Read-MenuChoice -Prompt "  Day of week" -Options @('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday')
+                $days    = Read-MultiMenuChoice -Prompt "  Day(s) of week" -Options @('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday')
                 $timeStr = Read-RunTime -Prompt "  Run time" -Default '02:00'
-                $trigger = New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek $day -At $timeStr
+                $trigger = New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek $days -At $timeStr
             }
 
             # Email
@@ -753,7 +769,7 @@ exit `$exitCode
             $taskConfigs += [PSCustomObject]@{
                 Name        = $fn
                 Frequency   = $freq
-                DayOfWeek   = $day
+                DayOfWeek   = $days
                 Time        = $timeStr
                 Trigger     = $trigger
                 EmailConfig = $emailConfig
@@ -765,7 +781,7 @@ exit `$exitCode
     Write-Banner "Review - Tasks to Register"
     $taskConfigs | ForEach-Object {
         $emailSummary = if ($_.EmailConfig.Enabled) { $_.EmailConfig.To } else { 'No email' }
-        [PSCustomObject]@{ Name = $_.Name; Frequency = $_.Frequency; Day = $_.DayOfWeek; Time = $_.Time; Email = $emailSummary }
+        [PSCustomObject]@{ Name = $_.Name; Frequency = $_.Frequency; Day = ($_.DayOfWeek -join ', '); Time = $_.Time; Email = $emailSummary }
     } | Format-Table -AutoSize
     $confirm = Read-Host "`n  Proceed? (Y/N)"
     if ($confirm -notmatch '^[Yy]') {
@@ -808,7 +824,6 @@ exit `$exitCode
         'Get-ADForestHealth'               = "Get-ADForestHealth -OutputFolder '$sqBase\Get-ADForestHealth'"
         'Test-DCPortHealth'                = "`$date = Get-Date -Format 'yyyy-MM-dd'; Test-DCPortHealth -TimeoutSeconds 5 -ExportPath `"$dqBase\Test-DCPortHealth\`${date}_DCPortHealth.csv`""
         'Get-EntraConnectSyncStatus'       = "`$date = Get-Date -Format 'yyyy-MM-dd'; Get-EntraConnectSyncStatus -ExportPath `"$dqBase\Get-EntraConnectSyncStatus\`${date}_EntraConnectStatus.csv`""
-        'Get-GPOInventory'                 = "`$date = Get-Date -Format 'yyyy-MM-dd'; Get-GPOInventory -DomainName '$sqDomain' -OutputPath `"$dqBase\Get-GPOInventory\`${date}_GPOInventory.html`""
         'Get-GPOInventoryWithSettings'     = "`$date = Get-Date -Format 'yyyy-MM-dd'; Get-GPOInventoryWithSettings -DomainName '$sqDomain' -OutputPath `"$dqBase\Get-GPOInventoryWithSettings\`${date}_GPOInventoryWithSettings.html`""
         'Get-ADArchitectureAssessment'     = "Get-ADArchitectureAssessment -DomainName '$sqDomain' -OutputFolder '$sqBase\Get-ADArchitectureAssessment'"
         'Get-ADReplicationTopologyDiagram' = "`$date = Get-Date -Format 'yyyy-MM-dd'; Get-ADReplicationTopologyDiagram -OutputPath `"$dqBase\Get-ADReplicationTopologyDiagram\`${date}_ADReplicationTopology.html`""

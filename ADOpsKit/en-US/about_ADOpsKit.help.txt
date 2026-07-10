@@ -5,10 +5,12 @@ SHORT DESCRIPTION
     ADOpsKit is a PowerShell module for Active Directory and Hybrid Identity operations.
 
 LONG DESCRIPTION
-    ADOpsKit packages ten commonly needed Active Directory operations into a single
-    installable module. Functions cover DC health checks, replication topology
-    visualisation, GPO inventory, LDAP security auditing, account lockout tracing,
-    performance baseline deployment, and Entra Connect sync monitoring.
+    ADOpsKit packages commonly needed Active Directory operations into a single
+    installable module. Functions cover DC health checks, near-real-time DC
+    monitoring, replication topology visualisation, GPO inventory, LDAP security
+    auditing, account lockout tracing, performance baseline deployment, and
+    Entra Connect sync monitoring. Run "Get-Command -Module ADOpsKit" for the
+    current full list.
 
     Most functions work without ADWS (Active Directory Web Services). Core inventory
     and replication functions use LDAP via System.DirectoryServices and repadmin.exe
@@ -59,11 +61,9 @@ FUNCTIONS
     Get-InsecureLDAPBinds
         Detects unsigned and simple LDAP binds via Event ID 2889.
 
-    Get-GPOInventory
-        GPO metadata, links, permissions, status, and WMI filters.
-
     Get-GPOInventoryWithSettings
-        GPO inventory including configured settings from Get-GPOReport XML.
+        GPO metadata, links, permissions, status, WMI filters, and configured
+        settings from Get-GPOReport XML.
 
     Get-ADArchitectureAssessment
         Full AD inventory — HTML, JSON, and CSV output.
@@ -76,6 +76,24 @@ FUNCTIONS
 
     Register-ADOpsKitScheduledTasks
         Interactive wizard to register any ADOpsKit function as a scheduled task.
+
+    Test-ADDCDiagHealth
+        Full dcdiag test suite against every DC; emails an alert only on status
+        change or a persistent-failure reminder.
+
+    Register-ADDCDiagHealthMonitor
+        Registers Test-ADDCDiagHealth as a Scheduled Task on a short repeating
+        interval (default 5 min) for near-real-time DC monitoring.
+
+    Invoke-ADRealtimeHeartbeat
+        Lightweight per-DC heartbeat (TCP ports, SYSVOL/NETLOGON, required
+        services) for 30-60 second polling; alerts via email/Slack only on
+        state change.
+
+    Get-DCDecommissionReadiness
+        Pre-decommission scan of a single DC - FSMO roles, replication
+        health, logon activity, DNS/SYSVOL/DFSR, sites/subnets, trusts,
+        Global Catalog status, and a readiness checklist.
 
 REQUIREMENTS
     - Windows PowerShell 5.1 or later
