@@ -215,6 +215,18 @@ cd .\powershell-scripts
 
 ---
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for coding standards, testing
+requirements, and the pull request checklist.
+
+## Security
+
+Found a vulnerability? See [SECURITY.md](SECURITY.md) — please don't open a
+public issue for it.
+
+---
+
 ## Author
 
 **K Shankar R Karanth** — Active Directory & Hybrid Identity Engineer  
