@@ -1,6 +1,17 @@
 Import-Module "$PSScriptRoot\..\ADOpsKit.psd1" -Force -ErrorAction Stop
 
+# Sourced from the manifest rather than hardcoded so this suite cannot go
+# stale when a function is added to FunctionsToExport.
+$manifestData = Import-PowerShellDataFile "$PSScriptRoot\..\ADOpsKit.psd1"
+
 Describe "ADOpsKit Module" {
+
+    BeforeAll {
+        # Re-fetched here (in addition to the script-scope copy above) because
+        # Pester v5 only carries -ForEach data across from Discovery to Run;
+        # plain variable references inside It blocks need a BeforeAll copy.
+        $script:manifestData = Import-PowerShellDataFile "$PSScriptRoot\..\ADOpsKit.psd1"
+    }
 
     Context "Module loads correctly" {
 
@@ -12,28 +23,14 @@ Describe "ADOpsKit Module" {
             (Get-Module ADOpsKit).Version | Should -BeGreaterOrEqual ([version]'1.1.2')
         }
 
-        It "Should export exactly 11 functions" {
-            (Get-Command -Module ADOpsKit).Count | Should -Be 11
+        It "Should export exactly as many functions as declared in the manifest's FunctionsToExport" {
+            (Get-Command -Module ADOpsKit).Count | Should -Be $script:manifestData.FunctionsToExport.Count
         }
     }
 
     Context "All expected functions are exported" {
 
-        $expectedFunctions = @(
-            'Get-AccountLockoutReport',
-            'Get-InsecureLDAPBinds',
-            'Enable-DCPerformanceBaseline',
-            'Get-ADForestHealth',
-            'Test-DCPortHealth',
-            'Get-ADArchitectureAssessment',
-            'Get-ADReplicationTopologyDiagram',
-            'Get-GPOInventory',
-            'Get-GPOInventoryWithSettings',
-            'Get-EntraConnectSyncStatus',
-            'Register-ADOpsKitScheduledTasks'
-        )
-
-        It "Should export <_>" -ForEach $expectedFunctions {
+        It "Should export <_>" -ForEach $manifestData.FunctionsToExport {
             Get-Command -Module ADOpsKit -Name $_ | Should -Not -BeNullOrEmpty
         }
     }
