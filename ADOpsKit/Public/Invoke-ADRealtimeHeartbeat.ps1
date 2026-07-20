@@ -669,69 +669,8 @@ function Invoke-ADRealtimeHeartbeat {
         return 'Failed'
     }
 
-    function Invoke-ADRHWithTimeout {
-        <#
-        .SYNOPSIS
-            Runs a scriptblock in a separate runspace with an enforced wall-clock
-            timeout, so a blocking call (SMB, WMI/DCOM) cannot hang the caller
-            past the configured bound.
-        #>
-        [CmdletBinding()]
-        param(
-            [Parameter(Mandatory)]
-            [scriptblock]$ScriptBlock,
-
-            [AllowEmptyCollection()]
-            [object[]]$ArgumentList = @(),
-
-            [Parameter(Mandatory)]
-            [int]$TimeoutMs
-        )
-
-        $powershell = [powershell]::Create()
-        [void]$powershell.AddScript($ScriptBlock)
-
-        foreach ($argumentValue in $ArgumentList) {
-            [void]$powershell.AddArgument($argumentValue)
-        }
-
-        $asyncResult = $powershell.BeginInvoke()
-        $completed = $asyncResult.AsyncWaitHandle.WaitOne($TimeoutMs)
-
-        if (-not $completed) {
-            $powershell.Stop()
-            $powershell.Dispose()
-
-            return [pscustomobject]@{
-                TimedOut      = $true
-                Output        = $null
-                ErrorMessages = @()
-            }
-        }
-
-        $output = $null
-        $errorMessages = [System.Collections.Generic.List[string]]::new()
-
-        try {
-            $output = $powershell.EndInvoke($asyncResult)
-        }
-        catch {
-            $innerException = $_.Exception.InnerException
-            $errorMessages.Add($(if ($innerException) { $innerException.Message } else { $_.Exception.Message }))
-        }
-
-        foreach ($streamError in $powershell.Streams.Error) {
-            $errorMessages.Add($streamError.Exception.Message)
-        }
-
-        $powershell.Dispose()
-
-        return [pscustomobject]@{
-            TimedOut      = $false
-            Output        = $output
-            ErrorMessages = @($errorMessages)
-        }
-    }
+    # Bounded-timeout scriptblock execution is now shared in Private/Helpers.ps1
+    # as Invoke-ADOKWithTimeout (this function used to duplicate it locally).
 
     function Test-SharePath {
         [CmdletBinding()]
@@ -748,7 +687,7 @@ function Invoke-ADRealtimeHeartbeat {
 
         $path = "\\$ComputerName\$ShareName"
 
-        $probe = Invoke-ADRHWithTimeout -TimeoutMs $TimeoutMs -ArgumentList @($path) -ScriptBlock {
+        $probe = Invoke-ADOKWithTimeout -TimeoutMs $TimeoutMs -ArgumentList @($path) -ScriptBlock {
             param($SharePath)
             Get-Item -LiteralPath $SharePath -ErrorAction Stop
         }
@@ -803,7 +742,7 @@ function Invoke-ADRealtimeHeartbeat {
         $results = [System.Collections.Generic.List[object]]::new()
         $filter = ($ServiceName | ForEach-Object { "Name='$($_.Replace("'", "''"))'" }) -join ' OR '
 
-        $probe = Invoke-ADRHWithTimeout -TimeoutMs $TimeoutMs -ArgumentList @($ComputerName, $filter) -ScriptBlock {
+        $probe = Invoke-ADOKWithTimeout -TimeoutMs $TimeoutMs -ArgumentList @($ComputerName, $filter) -ScriptBlock {
             param($TargetComputerName, $WmiFilter)
             Get-WmiObject -Class Win32_Service -ComputerName $TargetComputerName -Filter $WmiFilter -ErrorAction Stop
         }

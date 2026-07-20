@@ -69,6 +69,8 @@ function Get-GPOInventoryWithSettings {
         [string]$SaveGpoReportXmlFolder
     )
 
+    Set-StrictMode -Version Latest
+
     function Get-GuidFromGpLinkLocal {
         param(
             [string]$GpLink
@@ -251,7 +253,7 @@ function Get-GPOInventoryWithSettings {
                 continue
             }
 
-            $grandChildren = Get-XmlElementChildren -Node $child
+            $grandChildren = @(Get-XmlElementChildren -Node $child)
 
             if ($grandChildren.Count -gt 0) {
                 continue
@@ -295,15 +297,21 @@ function Get-GPOInventoryWithSettings {
                 continue
             }
 
-            $grandChildren = Get-XmlElementChildren -Node $child
+            $grandChildren = @(Get-XmlElementChildren -Node $child)
 
             if ($grandChildren.Count -eq 0) {
                 continue
             }
 
+            # Each side must be individually array-wrapped before concatenation -
+            # a function returning an empty collection collapses to $null across
+            # the call boundary (a PowerShell pipeline-unrolling quirk, not a
+            # StrictMode issue), and $null + $null is $null, which @() then
+            # turns into a one-element array containing that $null rather than
+            # an empty array - silently reporting "has data" when there is none.
             $childPairs = @(
-                (Get-XmlAttributePairs -Node $child) +
-                (Get-XmlLeafPairs -Node $child -SkipNames $skipLeafNames)
+                @(Get-XmlAttributePairs -Node $child) +
+                @(Get-XmlLeafPairs -Node $child -SkipNames $skipLeafNames)
             )
 
             if ($childPairs.Count -gt 0) {
@@ -414,7 +422,7 @@ function Get-GPOInventoryWithSettings {
             return $true
         }
 
-        $children = Get-XmlElementChildren -Node $Node
+        $children = @(Get-XmlElementChildren -Node $Node)
         $attributePairs = @(Get-XmlAttributePairs -Node $Node -SkipNames @('clsid', 'uid', 'image', 'changed'))
 
         if ($Node.Attributes) {
@@ -647,7 +655,7 @@ function Get-GPOInventoryWithSettings {
             # needs this diagnostic artifact, and saving only after a successful
             # [xml] cast meant that one case never wrote the file.
             if (-not [string]::IsNullOrWhiteSpace($SaveXmlFolder)) {
-                if (-not (Test-Path -Path $SaveXmlFolder)) {
+                if (-not (Test-Path -LiteralPath $SaveXmlFolder)) {
                     New-Item -ItemType Directory -Path $SaveXmlFolder -Force | Out-Null
                 }
 
@@ -962,7 +970,7 @@ tr:hover td { background:#eaf0fa; }
 
     $outputFolder = Split-Path -Path $OutputPath -Parent
 
-    if (-not [string]::IsNullOrWhiteSpace($outputFolder) -and -not (Test-Path -Path $outputFolder)) {
+    if (-not [string]::IsNullOrWhiteSpace($outputFolder) -and -not (Test-Path -LiteralPath $outputFolder)) {
         New-Item -ItemType Directory -Path $outputFolder -Force | Out-Null
     }
 

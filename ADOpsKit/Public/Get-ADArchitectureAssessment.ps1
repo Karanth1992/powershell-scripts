@@ -627,7 +627,7 @@ function Get-ADArchitectureAssessment {
 
         $rows = @($Data)
         if ((Get-ObjectCount $rows) -gt 0) {
-            $rows | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8
+            $rows | Export-Csv -LiteralPath $Path -NoTypeInformation -Encoding UTF8
         }
     }
 
@@ -1363,57 +1363,6 @@ function Get-ADArchitectureAssessment {
         Add-CollectionWarning -Area 'DC Port Reachability' -Message 'Port checks were skipped by parameter.'
     }
 
-    function Invoke-ADOKAssessmentWithTimeout {
-        <#
-        .SYNOPSIS
-            Runs a scriptblock in a separate runspace with an enforced wall-clock
-            timeout, so a blocking WMI/DCOM call to an unreachable DC (firewall
-            silently dropping packets rather than rejecting them, which can hang
-            far longer than a TCP timeout) cannot stall the whole assessment.
-        #>
-        param(
-            [Parameter(Mandatory)]
-            [scriptblock]$ScriptBlock,
-
-            [AllowEmptyCollection()]
-            [object[]]$ArgumentList = @(),
-
-            [Parameter(Mandatory)]
-            [int]$TimeoutMs
-        )
-
-        $powershell = [powershell]::Create()
-        [void]$powershell.AddScript($ScriptBlock)
-        foreach ($argumentValue in $ArgumentList) {
-            [void]$powershell.AddArgument($argumentValue)
-        }
-
-        $asyncResult = $powershell.BeginInvoke()
-        $completed = $asyncResult.AsyncWaitHandle.WaitOne($TimeoutMs)
-
-        if (-not $completed) {
-            $powershell.Stop()
-            $powershell.Dispose()
-            return [pscustomobject]@{ TimedOut = $true; Output = $null; ErrorMessage = $null }
-        }
-
-        $output = $null
-        $errorMessage = $null
-        try {
-            $output = $powershell.EndInvoke($asyncResult)
-        }
-        catch {
-            $innerException = $_.Exception.InnerException
-            $errorMessage = if ($innerException) { $innerException.Message } else { $_.Exception.Message }
-        }
-        if (-not $errorMessage -and $powershell.Streams.Error.Count -gt 0) {
-            $errorMessage = $powershell.Streams.Error[0].Exception.Message
-        }
-        $powershell.Dispose()
-
-        return [pscustomobject]@{ TimedOut = $false; Output = $output; ErrorMessage = $errorMessage }
-    }
-
     Write-Step "Collecting service posture from domain controllers"
     $serviceRows = New-Object System.Collections.ArrayList
     if (-not $SkipServiceChecks) {
@@ -1440,7 +1389,7 @@ function Get-ADArchitectureAssessment {
 
         foreach ($dc in $dcInventory) {
             try {
-                $wmiResult = Invoke-ADOKAssessmentWithTimeout -TimeoutMs $ServiceCheckTimeoutMs -ScriptBlock {
+                $wmiResult = Invoke-ADOKWithTimeout -TimeoutMs $ServiceCheckTimeoutMs -ScriptBlock {
                     param($HostName)
                     @(Get-WmiObject -Class Win32_Service -ComputerName $HostName -ErrorAction Stop)
                 } -ArgumentList @($dc.HostName)
@@ -1448,8 +1397,8 @@ function Get-ADArchitectureAssessment {
                 if ($wmiResult.TimedOut) {
                     throw "Service query timed out after $ServiceCheckTimeoutMs ms"
                 }
-                if ($wmiResult.ErrorMessage) {
-                    throw $wmiResult.ErrorMessage
+                if ($wmiResult.ErrorMessages.Count -gt 0) {
+                    throw ($wmiResult.ErrorMessages -join '; ')
                 }
                 $remoteServices = @($wmiResult.Output)
 
@@ -1703,7 +1652,7 @@ function Get-ADArchitectureAssessment {
         CollectionWarnings         = @($script:CollectionWarnings)
     }
 
-    $reportData | ConvertTo-Json -Depth 8 | Set-Content -Path $jsonPath -Encoding UTF8
+    $reportData | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $jsonPath -Encoding UTF8
 
     $css = @'
 body {
@@ -1966,7 +1915,7 @@ $css
 </html>
 "@
 
-    $html | Set-Content -Path $htmlPath -Encoding UTF8
+    $html | Set-Content -LiteralPath $htmlPath -Encoding UTF8
 
     Write-Host ''
     Write-Host 'AD architecture assessment completed.'

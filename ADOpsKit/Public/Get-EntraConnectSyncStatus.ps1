@@ -7,7 +7,10 @@ function Get-EntraConnectSyncStatus {
     Must be run locally on the Entra Connect server - it collects:
 
     - Last sync cycle time and result (delta / initial / export)
-    - Connector export/import error counts per connector
+    - Connector export/import activity counts per connector (adds/updates/
+      deletes/no-change) - ADSync's connector statistics API does not expose
+      a per-connector error count; check the Synchronization Service Manager
+      UI or Get-ADSyncRunProfileResult for actual sync errors
     - Password hash sync status
     - Staging mode state
     - Auto-upgrade setting
@@ -55,6 +58,8 @@ function Get-EntraConnectSyncStatus {
         [string]$ExportPath   = "C:\ADOpsKit\Reports\Get-EntraConnectSyncStatus\$(Get-Date -Format 'yyyy-MM-dd')_EntraConnectStatus.csv"
     )
 
+    Set-StrictMode -Version Latest
+
     if ($ComputerName -ne $env:COMPUTERNAME) {
         throw "Get-EntraConnectSyncStatus must be run locally on the Entra Connect server. " +
               "-ComputerName '$ComputerName' does not match the local machine name '$env:COMPUTERNAME', " +
@@ -89,22 +94,47 @@ function Get-EntraConnectSyncStatus {
 
         # -- Global sync state --
         $scheduler   = Get-ADSyncScheduler
-        $version     = (Get-ADSyncGlobalSettings).Parameters |
-                       Where-Object Name -eq 'Microsoft.Synchronize.SynchronizationVersion' |
-                       Select-Object -ExpandProperty Value
+
+        # Global settings has no product-version parameter (an earlier version
+        # of this script looked up 'Microsoft.Synchronize.SynchronizationVersion',
+        # which does not exist and always evaluated to $null). The real product
+        # version is the file version of the sync engine binary.
+        $version = 'Unknown'
+        try {
+            $miiserverPath = Join-Path $env:ProgramFiles 'Microsoft Azure AD Sync\Bin\miiserver.exe'
+            if (Test-Path -LiteralPath $miiserverPath) {
+                $version = (Get-Item -LiteralPath $miiserverPath).VersionInfo.ProductVersion
+            }
+        } catch { <# leave $version as 'Unknown' #> }
+
+        # Scheduler has no "last successful sync" property - the closest real
+        # signal is the most recent run's own result/timestamp from run history.
+        $lastRunResult = $null
+        try {
+            $lastRunResult = Get-ADSyncRunProfileResult -NumberRequested 1 -ErrorAction Stop | Select-Object -First 1
+        } catch { <# run history unavailable - leave $lastRunResult as $null #> }
 
         # -- Connector summary --
+        # Microsoft.IdentityManagement.PowerShell.ObjectModel.ConnectorStatistics
+        # (the real type Get-ADSyncConnectorStatistics returns) only exposes
+        # ExportAdds/Updates/Deletes and ImportAdds/Updates/Deletes/NoChange -
+        # there is no per-connector error-count property on this object. An
+        # earlier version of this script read ExportErrors/ImportErrors/
+        # PendingExport* here, which don't exist on this type and always
+        # silently evaluated to $null.
         $connectors = Get-ADSyncConnector | ForEach-Object {
             $stats = Get-ADSyncConnectorStatistics -ConnectorName $_.Name
 
             [PSCustomObject]@{
-                ConnectorName    = $_.Name
-                Type             = $_.Type
-                ExportErrors     = $stats.ExportErrors
-                ImportErrors     = $stats.ImportErrors
-                PendingExportAdd = $stats.PendingExportAdd
-                PendingExportUpdate = $stats.PendingExportUpdate
-                PendingExportDelete = $stats.PendingExportDelete
+                ConnectorName  = $_.Name
+                Type           = $_.Type
+                ExportAdds     = $stats.ExportAdds
+                ExportUpdates  = $stats.ExportUpdates
+                ExportDeletes  = $stats.ExportDeletes
+                ImportAdds     = $stats.ImportAdds
+                ImportUpdates  = $stats.ImportUpdates
+                ImportDeletes  = $stats.ImportDeletes
+                ImportNoChange = $stats.ImportNoChange
             }
         }
 
@@ -119,11 +149,20 @@ function Get-EntraConnectSyncStatus {
         [PSCustomObject]@{
             Version              = $version
             StagingModeEnabled   = $scheduler.StagingModeEnabled
-            AutoUpgradeState     = (Get-ADSyncAutoUpgrade).State
-            SyncEnabled          = $scheduler.SyncEnabled
+            # Get-ADSyncAutoUpgrade returns the state enum value directly
+            # (AutoUpgradeConfigurationState), not an object with a .State
+            # property - the earlier .State access always returned $null.
+            AutoUpgradeState     = [string](Get-ADSyncAutoUpgrade)
+            # The real scheduler property is SyncCycleEnabled - an earlier
+            # version of this script read SyncEnabled, which doesn't exist.
+            SyncEnabled          = $scheduler.SyncCycleEnabled
             NextSyncCycle        = $scheduler.NextSyncCyclePolicyType
             SchedulerSuspended   = $scheduler.SchedulerSuspended
-            LastSuccessfulSync   = $scheduler.LastSyncRunStartTime
+            # LastSyncRunStartTime doesn't exist on the scheduler object - an
+            # earlier version of this script read it there and always got
+            # $null. Real run history comes from Get-ADSyncRunProfileResult.
+            LastSuccessfulSync   = if ($lastRunResult) { $lastRunResult.StartDate } else { $null }
+            LastSyncResult       = if ($lastRunResult) { $lastRunResult.Result } else { 'Unknown' }
             PasswordSyncEnabled  = if ($pwdSync) { $pwdSync.Enabled } else { 'N/A' }
             Connectors           = $connectors
         }
@@ -148,21 +187,28 @@ function Get-EntraConnectSyncStatus {
     Write-StatusLine "Scheduler Suspended"    $result.SchedulerSuspended   "False"
     Write-StatusLine "Auto-Upgrade"           $result.AutoUpgradeState     "Enabled"
     Write-StatusLine "Next Sync Policy"       $result.NextSyncCycle
-    Write-StatusLine "Last Successful Sync"   $result.LastSuccessfulSync
+    Write-StatusLine "Last Sync Run"          $result.LastSuccessfulSync
+    Write-StatusLine "Last Sync Result"       $result.LastSyncResult       "success"
     Write-StatusLine "Password Sync Enabled"  $result.PasswordSyncEnabled  "True"
 
     Write-Header "Connector Summary"
 
     $result.Connectors | Format-Table -AutoSize `
-        ConnectorName, Type, ExportErrors, ImportErrors,
-        PendingExportAdd, PendingExportUpdate, PendingExportDelete
+        ConnectorName, Type, ExportAdds, ExportUpdates, ExportDeletes,
+        ImportAdds, ImportUpdates, ImportDeletes, ImportNoChange
 
-    $hasErrors = $result.Connectors | Where-Object { $_.ExportErrors -gt 0 -or $_.ImportErrors -gt 0 }
-    if ($hasErrors) {
-        Write-Host "  ATTENTION: One or more connectors have sync errors." -ForegroundColor Red
-        $hasErrors | Format-Table -AutoSize ConnectorName, ExportErrors, ImportErrors
+    # ADSync's ConnectorStatistics object has no per-connector error-count
+    # property, so pending export/import activity is used as the "needs
+    # attention" signal instead of a genuine error count. For real sync
+    # errors, check the Synchronization Service Manager UI or
+    # Get-ADSyncRunProfileResult for the relevant run history.
+    $hasPendingExports = $result.Connectors | Where-Object { $_.ExportAdds -gt 0 -or $_.ExportUpdates -gt 0 -or $_.ExportDeletes -gt 0 }
+    if ($hasPendingExports) {
+        Write-Host "  ATTENTION: One or more connectors have pending export changes." -ForegroundColor Red
+        Write-Warning "One or more Entra Connect connectors have pending export changes."
+        $hasPendingExports | Format-Table -AutoSize ConnectorName, ExportAdds, ExportUpdates, ExportDeletes
     } else {
-        Write-Host "  All connectors report zero sync errors." -ForegroundColor Green
+        Write-Host "  All connectors have zero pending export changes." -ForegroundColor Green
     }
 
     if ($result.StagingModeEnabled -eq $true) {
@@ -172,9 +218,9 @@ function Get-EntraConnectSyncStatus {
     # ============ EXPORT ============
 
     if ($ExportPath -ne "") {
-        $exportDir = Split-Path $ExportPath
-        if ($exportDir -and -not (Test-Path $exportDir)) { New-Item -ItemType Directory -Path $exportDir -Force | Out-Null }
-        $result.Connectors | Export-Csv -NoTypeInformation -Path $ExportPath
+        $exportDir = Split-Path -LiteralPath $ExportPath
+        if ($exportDir -and -not (Test-Path -LiteralPath $exportDir)) { New-Item -ItemType Directory -Path $exportDir -Force | Out-Null }
+        $result.Connectors | Export-Csv -NoTypeInformation -LiteralPath $ExportPath
         Write-Host "`nConnector stats exported to $ExportPath" -ForegroundColor Green
     }
 }

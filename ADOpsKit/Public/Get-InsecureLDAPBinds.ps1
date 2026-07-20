@@ -48,10 +48,11 @@ function Get-InsecureLDAPBinds {
         [string]$OutputPath = 'C:\ADOpsKit\Reports\Get-InsecureLDAPBinds'
     )
 
+    Set-StrictMode -Version Latest
     $dateString = Get-Date -Format "yyyy-MM-dd"
     $since      = (Get-Date).AddHours(-$Hours)
 
-    if (-not (Test-Path -Path $OutputPath)) {
+    if (-not (Test-Path -LiteralPath $OutputPath)) {
         New-Item -ItemType Directory -Path $OutputPath | Out-Null
     }
 
@@ -156,7 +157,7 @@ function Get-InsecureLDAPBinds {
     $outputFile = Join-Path $OutputPath "${dateString}_InsecureLDAPBinds.csv"
 
     if ($AllInsecureLDAPBinds.Count -gt 0) {
-        $AllInsecureLDAPBinds | Export-Csv -NoTypeInformation -Path $outputFile
+        $AllInsecureLDAPBinds | Export-Csv -NoTypeInformation -LiteralPath $outputFile
         Write-Host "$($AllInsecureLDAPBinds.Count) record(s) saved to $outputFile"
     }
     else {

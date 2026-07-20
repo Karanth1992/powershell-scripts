@@ -125,7 +125,7 @@
     $ReportFile = Join-Path $OutputPath "DCDecomm_${DCName}_${Timestamp}.html"
     $Results    = [ordered]@{}   # Accumulates all findings
 
-    if (-not (Test-Path $OutputPath)) {
+    if (-not (Test-Path -LiteralPath $OutputPath)) {
         New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
     }
 
@@ -421,8 +421,8 @@
     # Check Netlogon.log for this DC for LOGON entries (via UNC)
     $netlogonLog = "\\$DCName\ADMIN$\debug\netlogon.log"
     try {
-        if (Test-Path $netlogonLog) {
-            $logLines   = Get-Content $netlogonLog -Tail 500
+        if (Test-Path -LiteralPath $netlogonLog) {
+            $logLines   = Get-Content -LiteralPath $netlogonLog -Tail 500
             $logonLines = @($logLines | Select-String "LOGON" | Select-Object -Last 50)
             Write-Check "Netlogon.log LOGON entries (last 500 lines)" "INFO" "$($logonLines.Count) LOGON entries"
             $Results["NetlogonLog"] = $logonLines | Select-Object -ExpandProperty Line
@@ -678,7 +678,7 @@
     </html>
 "@
 
-    $html | Out-File -FilePath $ReportFile -Encoding UTF8
+    $html | Out-File -LiteralPath $ReportFile -Encoding UTF8
     Write-Host "`n  [DONE] Report written to: $ReportFile" -ForegroundColor Green
     Write-Host "  Total runtime: $([math]::Round(((Get-Date) - $StartTime).TotalSeconds, 1))s`n" -ForegroundColor Green
 

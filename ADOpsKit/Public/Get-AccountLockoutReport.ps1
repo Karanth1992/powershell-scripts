@@ -52,13 +52,15 @@ function Get-AccountLockoutReport {
         [long]$LookbackMilliseconds  = 4233600000
     )
 
+    Set-StrictMode -Version Latest
+
     # ============ FUNCTIONS ============
 
     function Remove-ExistingFile {
         param([string[]]$Files)
         foreach ($f in $Files) {
-            if (Test-Path $f) {
-                Remove-Item $f -ErrorAction SilentlyContinue
+            if (Test-Path -LiteralPath $f) {
+                Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue
             }
         }
     }
@@ -87,6 +89,7 @@ function Get-AccountLockoutReport {
         }
         catch {
             Write-ProgressInfo "Failed to send email: $_" -Color Red
+            Write-Warning "Failed to send account lockout report email to '$To': $($_.Exception.Message)"
         }
     }
 
@@ -99,7 +102,7 @@ function Get-AccountLockoutReport {
 
     # ============ FILE PATHS ============
 
-    if (-not (Test-Path $TempPath)) { New-Item -ItemType Directory -Path $TempPath -Force | Out-Null }
+    if (-not (Test-Path -LiteralPath $TempPath)) { New-Item -ItemType Directory -Path $TempPath -Force | Out-Null }
 
     $datePrefix      = Get-Date -Format 'yyyy-MM-dd'
     $fileLockList    = "$TempPath\${datePrefix}_List_of_locked_users.txt"
@@ -122,7 +125,7 @@ function Get-AccountLockoutReport {
     $lockedUsers = @(Search-ADAccount -LockedOut | Select-Object -ExpandProperty Name)
     $userCount   = $lockedUsers.Count
 
-    $lockedUsers | Out-File $fileLockList
+    $lockedUsers | Out-File -LiteralPath $fileLockList
 
     Write-ProgressInfo "Locked out accounts found: $userCount" -Color Red
     Write-ProgressInfo "Querying PDC $($pdc.Name) for lockout source computers..." -Color Yellow
@@ -143,10 +146,11 @@ function Get-AccountLockoutReport {
                 Select-Object TimeCreated,
                     @{ Name = 'User Name';    Expression = { $_.Properties[0].Value } },
                     @{ Name = 'Source Host';  Expression = { $_.Properties[1].Value } } |
-                Export-Csv -Path $fileLockCsvTemp -Append -NoTypeInformation -Force
+                Export-Csv -LiteralPath $fileLockCsvTemp -Append -NoTypeInformation -Force
         }
         catch {
             Write-ProgressInfo "Error processing $user : $_" -Color Red
+            Write-Warning "Error querying lockout source events for '$user': $($_.Exception.Message)"
         }
 
         $pass++
@@ -174,14 +178,14 @@ tr:nth-child(even) td { background:#f8f8fc; }
     # ============ SORT CSV AND WRITE REPORTS ============
 
     try {
-        if (Test-Path $fileLockCsvTemp) {
-            Import-Csv -Path $fileLockCsvTemp |
+        if (Test-Path -LiteralPath $fileLockCsvTemp) {
+            Import-Csv -LiteralPath $fileLockCsvTemp |
                 Sort-Object 'User Name' |
-                Export-Csv -Path $fileLockCsvSort -NoTypeInformation
+                Export-Csv -LiteralPath $fileLockCsvSort -NoTypeInformation
 
-            Import-Csv -Path $fileLockCsvSort |
+            Import-Csv -LiteralPath $fileLockCsvSort |
                 ConvertTo-Html -Head $htmlHead -Body $htmlBody |
-                Out-File $fileLockHtml -Force
+                Out-File -LiteralPath $fileLockHtml -Force
         }
         else {
             Write-ProgressInfo "No event data found - CSV not generated." -Color Yellow
@@ -189,6 +193,7 @@ tr:nth-child(even) td { background:#f8f8fc; }
     }
     catch {
         Write-ProgressInfo "Error generating HTML report: $_" -Color Red
+        Write-Warning "Error generating account lockout HTML report: $($_.Exception.Message)"
     }
 
     # ============ COPY TO SHARED PATH ============
@@ -213,12 +218,13 @@ tr:nth-child(even) td { background:#f8f8fc; }
             @{ Source = $fileLockHtml;    Destination = $shareLockHtml },
             @{ Source = $fileLockList;    Destination = $shareLocklist }
         )) {
-            if (Test-Path $copyPair.Source) {
+            if (Test-Path -LiteralPath $copyPair.Source) {
                 try {
-                    Copy-Item -Path $copyPair.Source -Destination $copyPair.Destination -Force -ErrorAction Stop
+                    Copy-Item -LiteralPath $copyPair.Source -Destination $copyPair.Destination -Force -ErrorAction Stop
                 }
                 catch {
                     Write-ProgressInfo "Failed to copy $($copyPair.Source) to $($copyPair.Destination): $($_.Exception.Message)" -Color Red
+                    Write-Warning "Failed to copy '$($copyPair.Source)' to '$($copyPair.Destination)': $($_.Exception.Message)"
                     $copyFailures.Add($copyPair.Destination)
                 }
             }
@@ -226,6 +232,7 @@ tr:nth-child(even) td { background:#f8f8fc; }
 
         if ($copyFailures.Count -gt 0) {
             Write-ProgressInfo "Reports partially written to $SharedPath - $($copyFailures.Count) file(s) failed to copy, see above." -Color Red
+            Write-Warning "Account lockout reports partially written to '$SharedPath' - $($copyFailures.Count) file(s) failed to copy: $($copyFailures -join ', ')"
         }
         else {
             Write-ProgressInfo "Reports written to $SharedPath" -Color Green

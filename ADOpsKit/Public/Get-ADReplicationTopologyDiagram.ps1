@@ -800,14 +800,14 @@ $svgDiagram
 
     #region -- write output -------------------------------------------------------
 
-    $outputDir = Split-Path $OutputPath
-    if (-not (Test-Path $outputDir)) {
+    $outputDir = Split-Path -LiteralPath $OutputPath
+    if (-not (Test-Path -LiteralPath $outputDir)) {
         New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     }
 
     $outputFile = $OutputPath
 
-    $html | Out-File -FilePath $outputFile -Encoding utf8 -Force
+    $html | Out-File -LiteralPath $outputFile -Encoding utf8 -Force
     Write-ADOKOk "Report written to: $outputFile"
 
     #endregion

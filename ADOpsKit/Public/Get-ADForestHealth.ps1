@@ -55,6 +55,7 @@ function Get-ADForestHealth {
 
     # ============ CONFIGURATION ============
 
+    Set-StrictMode -Version Latest
     $now              = Get-Date
     $reportTime       = $now
     $allDomains       = (Get-ADForest).Domains
@@ -357,8 +358,8 @@ function Get-ADForestHealth {
 
     # ========== OUTPUT ==========
 
-    if (-not (Test-Path $OutputFolder)) { New-Item -Path $OutputFolder -ItemType Directory -Force | Out-Null }
-    $htmlBody | Out-File -FilePath $outFile -Encoding UTF8
+    if (-not (Test-Path -LiteralPath $OutputFolder)) { New-Item -Path $OutputFolder -ItemType Directory -Force | Out-Null }
+    $htmlBody | Out-File -LiteralPath $outFile -Encoding UTF8
     Write-Host "Report written to: $outFile" -ForegroundColor Green
 
     # ========== EMAIL (uncomment to enable) ==========

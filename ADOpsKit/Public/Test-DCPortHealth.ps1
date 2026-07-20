@@ -58,6 +58,8 @@ function Test-DCPortHealth {
         [string]$ExportPath  = "C:\ADOpsKit\Reports\Test-DCPortHealth\$(Get-Date -Format 'yyyy-MM-dd')_DCPortHealth.csv"
     )
 
+    Set-StrictMode -Version Latest
+
     # ============ PORT DEFINITIONS ============
 
     $portsToCheck = [ordered]@{
@@ -105,7 +107,11 @@ function Test-DCPortHealth {
 
     # ============ SUMMARY ============
 
-    $closed = $results | Where-Object { $_.Status -eq 'Closed' }
+    # @() guards against the common case (no closed ports): a pipeline that
+    # produces zero output objects collapses to $null when assigned, not an
+    # empty array, which would make the .Count check below throw under
+    # StrictMode - and silently misbehave without it.
+    $closed = @($results | Where-Object { $_.Status -eq 'Closed' })
 
     Write-Host "`n===== CLOSED PORTS SUMMARY =====" -ForegroundColor Yellow
 
@@ -120,10 +126,10 @@ function Test-DCPortHealth {
     # ============ EXPORT ============
 
     if ($ExportPath -ne "") {
-        $exportDir = Split-Path $ExportPath
-        if ($exportDir -and -not (Test-Path $exportDir)) { New-Item -ItemType Directory -Path $exportDir -Force | Out-Null }
+        $exportDir = Split-Path -LiteralPath $ExportPath
+        if ($exportDir -and -not (Test-Path -LiteralPath $exportDir)) { New-Item -ItemType Directory -Path $exportDir -Force | Out-Null }
         $results | Sort-Object DomainController, Port |
-            Export-Csv -Path $ExportPath -NoTypeInformation
+            Export-Csv -LiteralPath $ExportPath -NoTypeInformation
         Write-Host "Full results exported to $ExportPath" -ForegroundColor Green
     }
 }

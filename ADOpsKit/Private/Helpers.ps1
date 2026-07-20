@@ -24,6 +24,7 @@ function Test-ADOKTcpPort {
         [ValidateRange(1, 300)]
         [int]$TimeoutSeconds = 3
     )
+    Set-StrictMode -Version Latest
     try {
         $tcp  = New-Object System.Net.Sockets.TcpClient
         $iar  = $tcp.BeginConnect($ComputerName, $Port, $null, $null)
@@ -62,6 +63,7 @@ function Test-ADOKTcpPortDetail {
         [ValidateRange(100, 30000)]
         [int]$TimeoutMs = 1000
     )
+    Set-StrictMode -Version Latest
 
     $started     = Get-Date
     $client      = New-Object System.Net.Sockets.TcpClient
@@ -125,6 +127,7 @@ function ConvertTo-ADOKXmlEscaped {
         Internal ADOpsKit helper. Not exported.
     #>
     param([string]$s)
+    Set-StrictMode -Version Latest
     $s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;'
 }
 
@@ -145,6 +148,7 @@ function ConvertTo-ADOKXPathStringLiteral {
         Internal ADOpsKit helper. Not exported.
     #>
     param([string]$Value)
+    Set-StrictMode -Version Latest
 
     if ($null -eq $Value) { return "''" }
     if ($Value -notmatch "'") { return "'$Value'" }
@@ -172,6 +176,7 @@ function Write-ADOKStep {
         Internal ADOpsKit helper. Not exported.
     #>
     param([string]$M)
+    Set-StrictMode -Version Latest
     Write-Host "  [*] $M" -ForegroundColor Cyan
 }
 
@@ -183,6 +188,7 @@ function Write-ADOKOk {
         Internal ADOpsKit helper. Not exported.
     #>
     param([string]$M)
+    Set-StrictMode -Version Latest
     Write-Host "  [+] $M" -ForegroundColor Green
 }
 
@@ -194,6 +200,7 @@ function Write-ADOKWarn {
         Internal ADOpsKit helper. Not exported.
     #>
     param([string]$M)
+    Set-StrictMode -Version Latest
     Write-Host "  [!] $M" -ForegroundColor Yellow
 }
 
@@ -216,6 +223,7 @@ function New-ADOKLdapSearcher {
         [string[]] $Props,
         [string]   $Scope = 'Subtree'
     )
+    Set-StrictMode -Version Latest
     $entry    = [System.DirectoryServices.DirectoryEntry]::new("LDAP://$Server/$BaseDN")
     $searcher = [System.DirectoryServices.DirectorySearcher]::new($entry)
     $searcher.Filter      = $Filter
@@ -233,6 +241,7 @@ function Get-ADOKLdapAttr {
         Internal ADOpsKit helper. Not exported.
     #>
     param([string]$Server, [string]$DN, [string]$Attr)
+    Set-StrictMode -Version Latest
     try {
         $e = [System.DirectoryServices.DirectoryEntry]::new("LDAP://$Server/$DN")
         $e.RefreshCache([string[]]@($Attr))
@@ -248,6 +257,7 @@ function ConvertFrom-ADOKDistinguishedName {
         Internal ADOpsKit helper. Not exported.
     #>
     param([string]$DN)
+    Set-StrictMode -Version Latest
     ($DN -split ',' | Where-Object { $_ -match '^DC=' } |
         ForEach-Object { ($_ -split '=', 2)[1] }) -join '.'
 }
@@ -260,6 +270,7 @@ function Get-ADOKDcNameFromNtdsDN {
         Internal ADOpsKit helper. Not exported.
     #>
     param([string]$DN)
+    Set-StrictMode -Version Latest
     $m = [regex]::Match($DN, 'CN=NTDS Settings,CN=([^,]+)')
     if ($m.Success) { $m.Groups[1].Value } else { '' }
 }
@@ -288,6 +299,7 @@ function Protect-ADOKMachineSecret {
         [AllowEmptyString()]
         [string]$PlainText
     )
+    Set-StrictMode -Version Latest
     Add-Type -AssemblyName System.Security -ErrorAction Stop
     $protected = [System.Security.Cryptography.ProtectedData]::Protect(
         [System.Text.Encoding]::UTF8.GetBytes($PlainText),
@@ -295,4 +307,80 @@ function Protect-ADOKMachineSecret {
         [System.Security.Cryptography.DataProtectionScope]::LocalMachine
     )
     [Convert]::ToBase64String($protected)
+}
+
+# ---------------------------------------------------------------------------
+# Bounded-timeout scriptblock execution
+# (consolidates the runspace timeout wrapper previously duplicated in
+# Invoke-ADRealtimeHeartbeat and Get-ADArchitectureAssessment)
+# ---------------------------------------------------------------------------
+
+function Invoke-ADOKWithTimeout {
+    <#
+    .SYNOPSIS
+        Runs a scriptblock in a separate runspace with an enforced wall-clock
+        timeout, so a blocking call (WMI/DCOM, SMB) cannot hang the caller past
+        the configured bound.
+    .DESCRIPTION
+        Some remote calls used across ADOpsKit (WMI/DCOM service and hardware
+        queries, SMB share checks) can hang far longer than a TCP-level timeout
+        when a firewall silently drops packets rather than rejecting them. This
+        helper bounds any such call to a wall-clock limit by running it in its
+        own runspace and tearing it down if it doesn't complete in time.
+    .NOTES
+        Internal ADOpsKit helper. Not exported.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$ScriptBlock,
+
+        [AllowEmptyCollection()]
+        [object[]]$ArgumentList = @(),
+
+        [Parameter(Mandatory = $true)]
+        [int]$TimeoutMs
+    )
+    Set-StrictMode -Version Latest
+
+    $powershell = [powershell]::Create()
+    [void]$powershell.AddScript($ScriptBlock)
+    foreach ($argumentValue in $ArgumentList) {
+        [void]$powershell.AddArgument($argumentValue)
+    }
+
+    $asyncResult = $powershell.BeginInvoke()
+    $completed = $asyncResult.AsyncWaitHandle.WaitOne($TimeoutMs)
+
+    if (-not $completed) {
+        $powershell.Stop()
+        $powershell.Dispose()
+        return [pscustomobject]@{
+            TimedOut      = $true
+            Output        = $null
+            ErrorMessages = @()
+        }
+    }
+
+    $output = $null
+    $errorMessages = [System.Collections.Generic.List[string]]::new()
+
+    try {
+        $output = $powershell.EndInvoke($asyncResult)
+    }
+    catch {
+        $innerException = $_.Exception.InnerException
+        $errorMessages.Add($(if ($innerException) { $innerException.Message } else { $_.Exception.Message }))
+    }
+
+    foreach ($streamError in $powershell.Streams.Error) {
+        $errorMessages.Add($streamError.Exception.Message)
+    }
+
+    $powershell.Dispose()
+
+    return [pscustomobject]@{
+        TimedOut      = $false
+        Output        = $output
+        ErrorMessages = @($errorMessages)
+    }
 }

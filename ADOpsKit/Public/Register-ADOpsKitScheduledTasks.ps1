@@ -97,6 +97,7 @@ function Register-ADOpsKitScheduledTasks {
 
     #Requires -RunAsAdministrator
 
+    Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
 
     # --- helpers ---

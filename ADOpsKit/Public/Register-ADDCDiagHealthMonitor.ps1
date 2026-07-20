@@ -172,6 +172,7 @@ function Register-ADDCDiagHealthMonitor {
 
     #Requires -RunAsAdministrator
 
+    Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
 
     function ConvertTo-ADOKPSLiteral {

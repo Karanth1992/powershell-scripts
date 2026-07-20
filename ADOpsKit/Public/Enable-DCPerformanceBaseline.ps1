@@ -35,6 +35,7 @@ function Enable-DCPerformanceBaseline {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     param()
 
+    Set-StrictMode -Version Latest
     $ResultWaitSeconds = 30
     $remoteLogFolder = 'C:\PerfLogs\DC_Baseline'
     $remoteScriptPath = "$remoteLogFolder\Deploy-Baseline.ps1"
