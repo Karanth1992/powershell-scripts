@@ -1213,7 +1213,19 @@ function Invoke-ADRealtimeHeartbeat {
             return $state
         }
 
-        $json = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
+        try {
+            $json = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
+        }
+        catch {
+            # A truncated/corrupt state file (e.g. the process was killed mid-write
+            # on a prior run) must not permanently wedge the monitor - every future
+            # run would otherwise fail here forever. Treat it as "no prior state"
+            # instead; Save-AlertState below now writes atomically so this should
+            # only happen for files written before that fix, or from external
+            # interference with the file.
+            Write-Warning "Could not parse alert state file '$Path' - treating as no prior state. $($_.Exception.Message)"
+            return $state
+        }
 
         foreach ($entry in @($json.Entries)) {
             $key = ([string]$entry.ComputerName).ToLowerInvariant()
@@ -1269,7 +1281,14 @@ function Invoke-ADRealtimeHeartbeat {
         }
 
         $json = $payload | ConvertTo-Json -Depth 6
-        Set-Content -LiteralPath $Path -Value $json -Encoding UTF8
+
+        # Write to a temp file and rename into place rather than writing $Path
+        # directly - a rename on the same volume is atomic, so a process killed
+        # mid-write (Task Scheduler timeout, power loss) can never leave a
+        # truncated/corrupt state file behind.
+        $tempPath = "$Path.tmp"
+        Set-Content -LiteralPath $tempPath -Value $json -Encoding UTF8
+        Move-Item -LiteralPath $tempPath -Destination $Path -Force
     }
 
     function New-NotificationPlan {
@@ -1658,9 +1677,31 @@ function Invoke-ADRealtimeHeartbeat {
     $existingState = Import-AlertState -Path $stateFilePath
     $notificationPlan = New-NotificationPlan -Result $resultsArray -ExistingState $existingState
 
+    # Each send is isolated so one failed email/Slack delivery (bad SMTP relay,
+    # webhook timeout, etc.) does not skip the remaining notifications in this
+    # run or - critically - the Save-AlertState call below. Losing that call
+    # would make every DC in this run look "new" again on the next run and
+    # re-fire alerts that already went out, or silently drop LastSeenUtc
+    # updates for DCs that were never even attempted.
+    $failedNotifications = [System.Collections.Generic.List[string]]::new()
     foreach ($notification in @($notificationPlan.Notifications)) {
-        Send-AlertEmailMessage -Notification $notification
-        Send-SlackAlertMessage -Notification $notification -ResolvedSlackWebhookUrl $resolvedSlackWebhookUrl
+        try {
+            Send-AlertEmailMessage -Notification $notification
+        }
+        catch {
+            Write-Warning "Failed to send alert email for $($notification.ComputerName): $($_.Exception.Message)"
+            $failedNotifications.Add("$($notification.ComputerName) (email)")
+        }
+        try {
+            Send-SlackAlertMessage -Notification $notification -ResolvedSlackWebhookUrl $resolvedSlackWebhookUrl
+        }
+        catch {
+            Write-Warning "Failed to send Slack alert for $($notification.ComputerName): $($_.Exception.Message)"
+            $failedNotifications.Add("$($notification.ComputerName) (Slack)")
+        }
+    }
+    if ($failedNotifications.Count -gt 0) {
+        Write-Warning "$($failedNotifications.Count) notification(s) failed to send: $($failedNotifications -join ', ')"
     }
 
     Save-AlertState -State $notificationPlan.UpdatedState -Path $stateFilePath

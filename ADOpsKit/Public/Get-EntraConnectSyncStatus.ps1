@@ -4,7 +4,7 @@ function Get-EntraConnectSyncStatus {
     Reports the health and sync status of an Entra Connect (Azure AD Connect) server.
 
 .DESCRIPTION
-    Connects to the local or a remote Entra Connect server and collects:
+    Must be run locally on the Entra Connect server - it collects:
 
     - Last sync cycle time and result (delta / initial / export)
     - Connector export/import error counts per connector
@@ -16,8 +16,15 @@ function Get-EntraConnectSyncStatus {
     Outputs a summary to the console and optionally exports a CSV.
     Requires the ADSync module installed on the Entra Connect server.
 
+    Does not use PSRemoting/WinRM, which is assumed blocked in this
+    environment. Remote execution against another server's ADSync state
+    would require WinRM (Invoke-Command); that path has been intentionally
+    removed. Run this function directly on the Entra Connect server itself
+    (e.g. via a scheduled task or interactive session on that box).
+
 .PARAMETER ComputerName
-    Name of the Entra Connect server. Defaults to the local machine.
+    Informational only - used for report labelling. Must match the local
+    machine name; this function cannot query a remote Entra Connect server.
 
 .PARAMETER ExportPath
     Optional path to export connector results as CSV.
@@ -28,22 +35,32 @@ function Get-EntraConnectSyncStatus {
     Runs against the local machine (must be executed on the Entra Connect server).
 
 .EXAMPLE
-    Get-EntraConnectSyncStatus -ComputerName "AADCONN01" -ExportPath "C:\temp\sync.csv"
-    Runs against a remote Entra Connect server and exports connector stats.
+    Get-EntraConnectSyncStatus -ExportPath "C:\temp\sync.csv"
+    Runs locally and exports connector stats to CSV.
 
 .NOTES
     Author:   K Shankar R Karanth
     Website:  https://karanth.ovh
-    Version:  1.0
+    Version:  2.0
     Requires: ADSync PowerShell module (installed with Entra Connect),
-              run as local Administrator or ADSyncAdmins group member
+              run as local Administrator or ADSyncAdmins group member,
+              locally on the Entra Connect server. WinRM/PSRemoting is not
+              used or required.
 #>
 
     [CmdletBinding()]
     param (
+        [ValidateNotNullOrEmpty()]
         [string]$ComputerName = $env:COMPUTERNAME,
         [string]$ExportPath   = "C:\ADOpsKit\Reports\Get-EntraConnectSyncStatus\$(Get-Date -Format 'yyyy-MM-dd')_EntraConnectStatus.csv"
     )
+
+    if ($ComputerName -ne $env:COMPUTERNAME) {
+        throw "Get-EntraConnectSyncStatus must be run locally on the Entra Connect server. " +
+              "-ComputerName '$ComputerName' does not match the local machine name '$env:COMPUTERNAME', " +
+              "and remote execution via WinRM/PSRemoting is not supported in this environment. " +
+              "Run this function directly on '$ComputerName' instead."
+    }
 
     # ============ HELPERS ============
 
@@ -58,9 +75,9 @@ function Get-EntraConnectSyncStatus {
         Write-Host ("  {0,-40} {1}" -f $Label, $Value) -ForegroundColor $color
     }
 
-    # ============ REMOTE OR LOCAL EXECUTION ============
-
-    $isRemote = $ComputerName -ne $env:COMPUTERNAME
+    # ============ LOCAL EXECUTION ============
+    # $ComputerName is validated above to match the local machine - no
+    # WinRM/PSRemoting is used here, only local module calls.
 
     $syncScript = {
         $ErrorActionPreference = 'Stop'
@@ -97,7 +114,7 @@ function Get-EntraConnectSyncStatus {
             $pwdSync = Get-ADSyncAADPasswordSyncConfiguration -SourceConnector (
                 $connectors | Where-Object Type -eq 'AD' | Select-Object -First 1 -ExpandProperty ConnectorName
             )
-        } catch { <# Password sync not configured — skip #> }
+        } catch { <# Password sync not configured - skip #> }
 
         [PSCustomObject]@{
             Version              = $version
@@ -115,12 +132,7 @@ function Get-EntraConnectSyncStatus {
     # ============ EXECUTE ============
 
     try {
-        if ($isRemote) {
-            Write-Host "Connecting to $ComputerName..." -ForegroundColor Cyan
-            $result = Invoke-Command -ComputerName $ComputerName -ScriptBlock $syncScript
-        } else {
-            $result = & $syncScript
-        }
+        $result = & $syncScript
     } catch {
         Write-Error "Failed to retrieve Entra Connect status: $_"
         return

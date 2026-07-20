@@ -24,10 +24,14 @@ function Register-ADDCDiagHealthMonitor {
           account does not have visibility.
 
     Security notes:
-        - If -SmtpCredential is supplied, its password is embedded in the
-          generated wrapper script (same pattern used by
-          Register-ADOpsKitScheduledTasks). The Scripts folder ACL is
-          restricted to SYSTEM, Administrators, and the run-as account.
+        - If -SmtpCredential is supplied, its password is stored in the
+          generated wrapper script as a machine-scoped DPAPI-encrypted
+          blob (same pattern used by Register-ADOpsKitScheduledTasks).
+          The plaintext is never written to disk, and the blob only
+          decrypts on this computer - if the script is copied elsewhere,
+          re-run this function there. The Scripts folder ACL is
+          additionally restricted to SYSTEM, Administrators, and the
+          run-as account.
         - Most internal SMTP relays for alerting do not require
           authentication (IP allow-listed); prefer that where possible.
 
@@ -232,13 +236,22 @@ function Register-ADDCDiagHealthMonitor {
     $credentialBlock = ''
     if ($SmtpCredential) {
         $smtpUserLiteral = ConvertTo-ADOKPSLiteral $SmtpCredential.UserName
-        $smtpPwdLiteral  = ConvertTo-ADOKPSLiteral (
-            [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-                [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SmtpCredential.Password)
-            )
-        )
+        # Machine-scoped DPAPI: only an encrypted blob is written into the
+        # generated script. It decrypts only on this computer, so the
+        # plaintext password never reaches disk.
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SmtpCredential.Password)
+        try {
+            $plainSmtpPwd = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+        }
+        finally {
+            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        }
+        $encSmtpPwd = Protect-ADOKMachineSecret -PlainText $plainSmtpPwd
         $credentialBlock = @"
-`$smtpSecurePwd = ConvertTo-SecureString $smtpPwdLiteral -AsPlainText -Force
+Add-Type -AssemblyName System.Security
+`$smtpPwdBytes  = [System.Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String('$encSmtpPwd'), `$null, [System.Security.Cryptography.DataProtectionScope]::LocalMachine)
+`$smtpSecurePwd = ConvertTo-SecureString ([System.Text.Encoding]::UTF8.GetString(`$smtpPwdBytes)) -AsPlainText -Force
+`$smtpPwdBytes  = `$null
 `$smtpCred      = [pscredential]::new($smtpUserLiteral, `$smtpSecurePwd)
 "@
         $paramLines.Add("    -SmtpCredential `$smtpCred")
@@ -260,7 +273,8 @@ $($paramLines -join " ``
     }
 
     # Restrict ACL: SYSTEM, Administrators, and the run-as account only -
-    # this file may contain an embedded SMTP password.
+    # defense in depth; the script contains at most a machine-scoped
+    # DPAPI-encrypted SMTP password (no plaintext).
     if ($PSCmdlet.ShouldProcess($ScriptsFolder, 'Restrict folder ACL')) {
         try {
             $acl = New-Object System.Security.AccessControl.DirectorySecurity
@@ -276,7 +290,20 @@ $($paramLines -join " ``
             Set-Acl -LiteralPath $ScriptsFolder -AclObject $acl
         }
         catch {
-            Write-Warning "Could not restrict ACL on '$ScriptsFolder': $($_.Exception.Message). Restrict it manually if the script contains SMTP credentials."
+            if ($SmtpCredential) {
+                # The NTFS ACL is the only thing standing between a local, unprivileged
+                # user and the DPAPI-encrypted SMTP password (LocalMachine-scoped DPAPI
+                # blobs can be decrypted by any local principal, not just admins) - so a
+                # failure to lock down this folder must not be treated as a soft warning
+                # when a secret was actually written into it.
+                throw "Could not restrict ACL on '$ScriptsFolder': $($_.Exception.Message). " +
+                      "This folder now contains a DPAPI-encrypted SMTP password, and the ACL is its only " +
+                      "access control - refusing to continue. Restrict '$ScriptsFolder' manually (SYSTEM, " +
+                      "Administrators, and the run-as account only) and re-run, or re-run without -SmtpCredential."
+            }
+            else {
+                Write-Warning "Could not restrict ACL on '$ScriptsFolder': $($_.Exception.Message). Restrict it manually."
+            }
         }
     }
 
@@ -295,11 +322,20 @@ $($paramLines -join " ``
 
     if ($PSCmdlet.ShouldProcess("\ADOpsKit\$TaskName", "Register scheduled task (every $IntervalMinutes minute(s))")) {
         if ($RunAsCredential) {
-            $plainPwd = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-                [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($RunAsCredential.Password)
-            )
-            Register-ScheduledTask -TaskPath '\ADOpsKit\' -TaskName $TaskName -Action $action -Trigger $trigger `
-                -Settings $settings -User $RunAsCredential.UserName -Password $plainPwd -RunLevel Highest -Force | Out-Null
+            $runAsBstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($RunAsCredential.Password)
+            try {
+                $plainPwd = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($runAsBstr)
+            }
+            finally {
+                [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($runAsBstr)
+            }
+            try {
+                Register-ScheduledTask -TaskPath '\ADOpsKit\' -TaskName $TaskName -Action $action -Trigger $trigger `
+                    -Settings $settings -User $RunAsCredential.UserName -Password $plainPwd -RunLevel Highest -Force | Out-Null
+            }
+            finally {
+                $plainPwd = $null
+            }
         }
         else {
             Register-ScheduledTask -TaskPath '\ADOpsKit\' -TaskName $TaskName -Action $action -Trigger $trigger `

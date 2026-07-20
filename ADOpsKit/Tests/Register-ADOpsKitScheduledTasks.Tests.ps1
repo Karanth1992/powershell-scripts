@@ -39,7 +39,7 @@ Describe "Register-ADOpsKitScheduledTasks" {
 
     # No Integration context here: this function is interactive (Read-Host
     # driven wizard), requires -RunAsAdministrator, and registers real
-    # Windows Scheduled Tasks — not safe to drive unattended in a test run.
+    # Windows Scheduled Tasks - not safe to drive unattended in a test run.
     # The two Context blocks below check the wizard's internal logic
     # statically (source text) since the wizard itself can't be invoked
     # unattended.

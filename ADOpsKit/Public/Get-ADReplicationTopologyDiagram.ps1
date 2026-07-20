@@ -192,7 +192,9 @@ function Get-ADReplicationTopologyDiagram {
                 $addrs = [System.Net.Dns]::GetHostAddresses($fqdn) |
                          Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork }
                 if ($addrs) { $ipv4 = $addrs[0].IPAddressToString }
-            } catch { <# DNS lookup failed — IP stays empty #> }
+            } catch {
+                Write-ADOKWarn "DNS resolution failed for $fqdn : $($_.Exception.Message)"
+            }
 
             # OS version from computer object in domain NC
             $os = 'Unknown'
@@ -206,7 +208,9 @@ function Get-ADReplicationTopologyDiagram {
                 if ($compResult -and $compResult.Properties['operatingsystem'].Count -gt 0) {
                     $os = [string]$compResult.Properties['operatingsystem'][0]
                 }
-            } catch { <# LDAP query failed — OS stays Unknown #> }
+            } catch {
+                Write-ADOKWarn "OS lookup failed for $name : $($_.Exception.Message)"
+            }
 
             # FSMO roles this DC holds
             $fsmoRoles = @()
@@ -255,7 +259,14 @@ function Get-ADReplicationTopologyDiagram {
         #                 Source DSA Site, Source DSA, Transport Type,
         #                 Number of Failures, Last Failure Time, Last Success Time, Last Failure Status
         $rawCsv = & repadmin.exe /showrepl * /csv 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            Write-ADOKWarn "repadmin /showrepl exited with code $LASTEXITCODE - replication data may be incomplete."
+        }
         $replCSV = $rawCsv | ConvertFrom-Csv
+
+        if ($allDCs.Count -gt 0 -and (@($replCSV)).Count -eq 0) {
+            Write-ADOKWarn "repadmin returned no replication rows despite $($allDCs.Count) domain controller(s) found - treat the replication link count as unreliable, not as a genuinely empty topology."
+        }
 
         foreach ($row in $replCSV) {
             $destName = ($row.'Destination DSA').Trim()
@@ -268,13 +279,38 @@ function Get-ADReplicationTopologyDiagram {
             $failures = 0
             if ($row.'Number of Failures') { $failures = [int]($row.'Number of Failures') }
 
+            # repadmin's date/time text reflects the OS locale of the machine repadmin
+            # ran on, which is not guaranteed to match this process's thread culture -
+            # a blind [datetime] cast can silently fail on a DC that is replicating
+            # fine, making it look like it has no last-success time. TryParse against
+            # both the current and invariant culture, and log rather than swallow a
+            # genuine parse failure so it isn't confused with "no data".
+            # repadmin uses a literal '0' as a sentinel for "this has never happened"
+            # in these two columns (e.g. no failure has ever occurred) - it is not a
+            # malformed date, so it must not be treated or logged as a parse failure.
             $lastSuccess = $null
-            if ($row.'Last Success Time' -and $row.'Last Success Time' -ne '') {
-                try { $lastSuccess = [datetime]$row.'Last Success Time' } catch { <# unparseable date #> }
+            $rawLastSuccess = $row.'Last Success Time'
+            if ($rawLastSuccess -and $rawLastSuccess -ne '' -and $rawLastSuccess -ne '0') {
+                $parsed = [datetime]::MinValue
+                if ([datetime]::TryParse($rawLastSuccess, [System.Globalization.CultureInfo]::CurrentCulture, [System.Globalization.DateTimeStyles]::None, [ref]$parsed) -or
+                    [datetime]::TryParse($rawLastSuccess, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$parsed)) {
+                    $lastSuccess = $parsed
+                }
+                else {
+                    Write-ADOKWarn "Could not parse 'Last Success Time' value '$rawLastSuccess' for $destName <- $srcName."
+                }
             }
             $lastAttempt = $null
-            if ($row.'Last Failure Time' -and $row.'Last Failure Time' -ne '') {
-                try { $lastAttempt = [datetime]$row.'Last Failure Time' } catch { <# unparseable date #> }
+            $rawLastAttempt = $row.'Last Failure Time'
+            if ($rawLastAttempt -and $rawLastAttempt -ne '' -and $rawLastAttempt -ne '0') {
+                $parsed = [datetime]::MinValue
+                if ([datetime]::TryParse($rawLastAttempt, [System.Globalization.CultureInfo]::CurrentCulture, [System.Globalization.DateTimeStyles]::None, [ref]$parsed) -or
+                    [datetime]::TryParse($rawLastAttempt, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$parsed)) {
+                    $lastAttempt = $parsed
+                }
+                else {
+                    Write-ADOKWarn "Could not parse 'Last Failure Time' value '$rawLastAttempt' for $destName <- $srcName."
+                }
             }
             if (-not $lastAttempt -and $lastSuccess) { $lastAttempt = $lastSuccess }
 
@@ -612,8 +648,8 @@ function Get-ADReplicationTopologyDiagram {
     #region -- build site link table rows -----------------------------------------
 
     $siteLinkRows = foreach ($sl in $siteLinks) {
-        $sites = $sl.Sites -join ' &lt;-&gt; '
-        "<tr><td>$($sl.Name)</td><td>$sites</td><td>$($sl.Cost)</td><td>$($sl.Frequency) min</td></tr>"
+        $sites = ($sl.Sites | ForEach-Object { ConvertTo-ADOKXmlEscaped $_ }) -join ' &lt;-&gt; '
+        "<tr><td>$(ConvertTo-ADOKXmlEscaped $sl.Name)</td><td>$sites</td><td>$($sl.Cost)</td><td>$($sl.Frequency) min</td></tr>"
     }
 
     #endregion
@@ -621,14 +657,14 @@ function Get-ADReplicationTopologyDiagram {
     #region -- build DC detail table rows -----------------------------------------
 
     $dcRows = foreach ($dc in ($allDCs | Sort-Object { $_.Site }, { $_.HostName })) {
-        $roles  = if ($dc.FsmoRoles) { $dc.FsmoRoles -join '<br>' } else { '-' }
+        $roles  = if ($dc.FsmoRoles) { ($dc.FsmoRoles | ForEach-Object { ConvertTo-ADOKXmlEscaped $_ }) -join '<br>' } else { '-' }
         $flags  = @()
         if ($dc.IsGC)   { $flags += 'Global Catalog' }
         if ($dc.IsRODC) { $flags += 'RODC' }
         $flagStr = if ($flags) { $flags -join ', ' } else { '-' }
         $failClass = if ($dc.ReplFailures -gt 0) { ' class="fail"' } else { '' }
 
-        "<tr$failClass><td>$($dc.HostName)</td><td>$($dc.IPv4)</td><td>$($dc.Site)</td><td>$($dc.Domain)</td><td>$($dc.OS)</td><td>$flagStr</td><td>$roles</td><td>$($dc.ReplFailures)</td></tr>"
+        "<tr$failClass><td>$(ConvertTo-ADOKXmlEscaped $dc.HostName)</td><td>$(ConvertTo-ADOKXmlEscaped $dc.IPv4)</td><td>$(ConvertTo-ADOKXmlEscaped $dc.Site)</td><td>$(ConvertTo-ADOKXmlEscaped $dc.Domain)</td><td>$(ConvertTo-ADOKXmlEscaped $dc.OS)</td><td>$flagStr</td><td>$roles</td><td>$($dc.ReplFailures)</td></tr>"
     }
 
     #endregion
@@ -639,7 +675,7 @@ function Get-ADReplicationTopologyDiagram {
         $lastOk   = if ($edge.LastSuccess)  { $edge.LastSuccess.ToString('yyyy-MM-dd HH:mm') } else { '-' }
         $lastTry  = if ($edge.LastAttempt)  { $edge.LastAttempt.ToString('yyyy-MM-dd HH:mm') } else { '-' }
         $failCls  = if ($edge.ConsecFailures -gt 0) { ' class="fail"' } else { '' }
-        "<tr$failCls><td>$($edge.Source)</td><td>$($edge.PartnerFQDN)</td><td>$($edge.Partition)</td><td>$lastTry</td><td>$lastOk</td><td>$($edge.ConsecFailures)</td></tr>"
+        "<tr$failCls><td>$(ConvertTo-ADOKXmlEscaped $edge.Source)</td><td>$(ConvertTo-ADOKXmlEscaped $edge.PartnerFQDN)</td><td>$(ConvertTo-ADOKXmlEscaped $edge.Partition)</td><td>$lastTry</td><td>$lastOk</td><td>$($edge.ConsecFailures)</td></tr>"
     }
 
     #endregion
@@ -652,13 +688,15 @@ function Get-ADReplicationTopologyDiagram {
     $dcRowsHtml       = $dcRows       -join "`n      "
     $edgeRowsHtml     = $edgeRows     -join "`n      "
     $siteLinkRowsHtml = $siteLinkRows -join "`n      "
+    $forestNameSafe   = ConvertTo-ADOKXmlEscaped $forestName
+    $domainControllerSafe = ConvertTo-ADOKXmlEscaped $DomainController
 
     $html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>AD Replication Topology - $forestName</title>
+<title>AD Replication Topology - $forestNameSafe</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Segoe UI, Arial, sans-serif; background: #0f172a; color: #e2e8f0; }
@@ -689,7 +727,7 @@ function Get-ADReplicationTopologyDiagram {
 
 <header>
   <h1>Active Directory Replication Topology</h1>
-  <p>Forest: <strong>$forestName</strong> &nbsp;|&nbsp; Generated: $generatedAt &nbsp;|&nbsp; Source DC: $DomainController</p>
+  <p>Forest: <strong>$forestNameSafe</strong> &nbsp;|&nbsp; Generated: $generatedAt &nbsp;|&nbsp; Source DC: $domainControllerSafe</p>
 </header>
 
 <nav>
@@ -753,7 +791,7 @@ $svgDiagram
   </table>
 </section>
 
-<footer>Generated by Get-ADReplicationTopologyDiagram — ADOpsKit &nbsp;|&nbsp; $generatedAt</footer>
+<footer>Generated by Get-ADReplicationTopologyDiagram &mdash; ADOpsKit &nbsp;|&nbsp; $generatedAt</footer>
 </body>
 </html>
 "@

@@ -29,7 +29,7 @@ CompanyName = 'karanth.ovh'
 Copyright = '(c) 2026 K Shankar R Karanth. All rights reserved.'
 
 # Description of the functionality provided by this module
-Description = 'Active Directory and Entra ID operations toolkit — inventory, health checks, audit reports, and replication topology diagrams. No ADWS dependency for core functions; uses LDAP and repadmin.'
+Description = 'Active Directory and Entra ID operations toolkit - inventory, health checks, audit reports, and replication topology diagrams. No ADWS dependency for core functions; uses LDAP and repadmin.'
 
 # Minimum version of the Windows PowerShell engine required by this module
 PowerShellVersion = '5.1'
@@ -121,7 +121,7 @@ PrivateData = @{
         # IconUri = ''
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'v1.4.0 — Added Invoke-ADRealtimeHeartbeat (lightweight 30-60s per-DC heartbeat, state-diffed email/Slack alerting) and Get-DCDecommissionReadiness (pre-decommission readiness scan: FSMO, replication, DNS/SYSVOL/DFSR, trusts, GC status). Removed Get-GPOInventory (superseded by Get-GPOInventoryWithSettings). Fixed Get-AccountLockoutReport producing no output with default -TempPath/-SharedPath. Fixed Register-ADOpsKitScheduledTasks silently misresolving unqualified service account names to local accounts, and weekly schedules only allowing a single day of week.'
+        ReleaseNotes = 'v1.4.0 - Added Invoke-ADRealtimeHeartbeat (lightweight 30-60s per-DC heartbeat, state-diffed email/Slack alerting) and Get-DCDecommissionReadiness (pre-decommission readiness scan: FSMO, replication, DNS/SYSVOL/DFSR, trusts, GC status). Removed Get-GPOInventory (superseded by Get-GPOInventoryWithSettings). Fixed Get-AccountLockoutReport producing no output with default -TempPath/-SharedPath. Fixed Register-ADOpsKitScheduledTasks silently misresolving unqualified service account names to local accounts, and weekly schedules only allowing a single day of week.'
 
     } # End of PSData hashtable
 

@@ -12,9 +12,13 @@ Describe "Enable-DCPerformanceBaseline" {
         It "Should support CmdletBinding" {
             (Get-Command Enable-DCPerformanceBaseline).CmdletBinding | Should -BeTrue
         }
+
+        It "Should support -WhatIf (SupportsShouldProcess)" {
+            (Get-Command Enable-DCPerformanceBaseline).Parameters.ContainsKey('WhatIf') | Should -BeTrue
+        }
     }
 
-    # No Integration context here: this function has no -WhatIf support and
-    # deploys a real logman Data Collector Set to every DC in the domain via
-    # WMI/DCOM, so it is not safe to invoke automatically in a test run.
+    # No Integration context here: even with -WhatIf support, this function's
+    # credential/connectivity requirements (WMI/DCOM + SMB to every DC) make it
+    # unsuitable for an automated -WhatIf smoke test in this suite.
 }

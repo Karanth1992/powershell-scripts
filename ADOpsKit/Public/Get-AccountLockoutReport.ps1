@@ -116,7 +116,10 @@ function Get-AccountLockoutReport {
 
     $startDate   = Get-Date
     $pdc         = Get-ADDomainController -Discover -Service PrimaryDC
-    $lockedUsers = Search-ADAccount -LockedOut | Select-Object -ExpandProperty Name
+    # Force array context: Select-Object -ExpandProperty returns a bare string
+    # (no .Count) rather than a one-element array when exactly one account is
+    # locked out, which would otherwise make $userCount silently blank.
+    $lockedUsers = @(Search-ADAccount -LockedOut | Select-Object -ExpandProperty Name)
     $userCount   = $lockedUsers.Count
 
     $lockedUsers | Out-File $fileLockList
@@ -131,8 +134,9 @@ function Get-AccountLockoutReport {
         Write-ProgressInfo "Processing: $user ($pass of $userCount)" -Color Blue
 
         try {
+            $userXPathLiteral = ConvertTo-ADOKXPathStringLiteral -Value $user
             $xPath = "*[System[EventID=4740 and TimeCreated[timediff(@SystemTime) <= $LookbackMilliseconds]]" +
-                     " and EventData[Data[@Name='TargetUserName']='$user']]"
+                     " and EventData[Data[@Name='TargetUserName']=$userXPathLiteral]]"
 
             Get-WinEvent -ComputerName $pdc.Name -LogName Security `
                 -FilterXPath $xPath -ErrorAction Stop |
@@ -165,7 +169,7 @@ tr:nth-child(even) td { background:#f8f8fc; }
 </style>
 '@
 
-    $htmlBody = '<h1>Computers Causing Lockouts — Sorted by User Name</h1>'
+    $htmlBody = '<h1>Computers Causing Lockouts &mdash; Sorted by User Name</h1>'
 
     # ============ SORT CSV AND WRITE REPORTS ============
 
@@ -203,11 +207,29 @@ tr:nth-child(even) td { background:#f8f8fc; }
     else {
         Remove-ExistingFile -Files @($shareLocklist, $shareLockCsv, $shareLockHtml)
 
-        if (Test-Path $fileLockCsvTemp) { Copy-Item $fileLockCsvTemp $shareLockCsv  -Force }
-        if (Test-Path $fileLockHtml)    { Copy-Item $fileLockHtml    $shareLockHtml -Force }
-        if (Test-Path $fileLockList)    { Copy-Item $fileLockList    $shareLocklist -Force }
+        $copyFailures = [System.Collections.Generic.List[string]]::new()
+        foreach ($copyPair in @(
+            @{ Source = $fileLockCsvTemp; Destination = $shareLockCsv },
+            @{ Source = $fileLockHtml;    Destination = $shareLockHtml },
+            @{ Source = $fileLockList;    Destination = $shareLocklist }
+        )) {
+            if (Test-Path $copyPair.Source) {
+                try {
+                    Copy-Item -Path $copyPair.Source -Destination $copyPair.Destination -Force -ErrorAction Stop
+                }
+                catch {
+                    Write-ProgressInfo "Failed to copy $($copyPair.Source) to $($copyPair.Destination): $($_.Exception.Message)" -Color Red
+                    $copyFailures.Add($copyPair.Destination)
+                }
+            }
+        }
 
-        Write-ProgressInfo "Reports written to $SharedPath" -Color Green
+        if ($copyFailures.Count -gt 0) {
+            Write-ProgressInfo "Reports partially written to $SharedPath - $($copyFailures.Count) file(s) failed to copy, see above." -Color Red
+        }
+        else {
+            Write-ProgressInfo "Reports written to $SharedPath" -Color Green
+        }
     }
 
     # ============ EMAIL SUMMARY (uncomment to enable) ============

@@ -173,6 +173,9 @@ function Test-ADDCDiagHealth {
         throw "Both -From and -To are required when -SmtpServer is supplied."
     }
 
+    # Load before first use - HtmlEncode is used while building alert HTML further below.
+    Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
+
     # ============ HELPERS (local to this function) ============
 
     function Invoke-ADOKDcDiagRaw {
@@ -285,13 +288,25 @@ function Test-ADDCDiagHealth {
     $alertItems = [System.Collections.Generic.List[PSCustomObject]]::new()
 
     foreach ($dc in $targets) {
+      try {
 
         $status       = 'Healthy'
         $failingTests = @()
 
+        # A single dropped ping/TCP attempt on an otherwise-healthy DC would
+        # otherwise flip status to Unreachable and fire an alert immediately,
+        # then another when it flips back - an alert storm on any flaky link.
+        # Retry once before concluding the DC is actually unreachable.
         $reachable = Test-Connection -ComputerName $dc -Count 1 -Quiet -ErrorAction SilentlyContinue
         if ($reachable) {
             $reachable = Test-ADOKTcpPort -ComputerName $dc -Port 135 -TimeoutSeconds 5
+        }
+        if (-not $reachable) {
+            Start-Sleep -Seconds 2
+            $reachable = Test-Connection -ComputerName $dc -Count 1 -Quiet -ErrorAction SilentlyContinue
+            if ($reachable) {
+                $reachable = Test-ADOKTcpPort -ComputerName $dc -Port 135 -TimeoutSeconds 5
+            }
         }
 
         if (-not $reachable) {
@@ -324,8 +339,14 @@ function Test-ADDCDiagHealth {
                 $isTransition = $true
             }
             elseif ($status -ne 'Healthy' -and $lastAlertUtc) {
-                $hoursSinceAlert = ($nowUtc - [DateTime]::Parse($lastAlertUtc).ToUniversalTime()).TotalHours
-                if ($hoursSinceAlert -ge $RepeatAlertAfterHours) { $isReminder = $true }
+                $parsedAlertUtc = [DateTime]::MinValue
+                if ([DateTime]::TryParse($lastAlertUtc, [ref]$parsedAlertUtc)) {
+                    $hoursSinceAlert = ($nowUtc - $parsedAlertUtc.ToUniversalTime()).TotalHours
+                    if ($hoursSinceAlert -ge $RepeatAlertAfterHours) { $isReminder = $true }
+                }
+                else {
+                    Write-Warning "Could not parse LastAlertUtc value '$lastAlertUtc' for DC '$dc' - treating as no prior alert."
+                }
             }
         }
         elseif ($status -ne 'Healthy') {
@@ -364,11 +385,34 @@ function Test-ADDCDiagHealth {
             Alerted           = ($isTransition -or $isReminder)
             TimestampUtc      = $nowUtc
         })
+      }
+      catch {
+        Write-Warning "Health check failed for DC '$dc': $($_.Exception.Message)"
+        $newState[$dc] = @{
+            LastStatus    = 'Unknown'
+            FailingTests  = @("Health check threw an exception: $($_.Exception.Message)")
+            LastChangeUtc = $nowUtc.ToString('o')
+            LastAlertUtc  = $null
+        }
+        $results.Add([PSCustomObject]@{
+            DomainController = $dc
+            Status            = 'Unknown'
+            PreviousStatus    = 'Unknown'
+            FailingTests      = @("Health check threw an exception: $($_.Exception.Message)")
+            Alerted           = $false
+            TimestampUtc      = $nowUtc
+        })
+      }
     }
 
     # ============ PERSIST STATE ============
 
-    ($newState | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $StateFilePath -Encoding UTF8
+    # Write to a temp file and rename into place - a rename on the same volume
+    # is atomic, so a process killed mid-write cannot leave a truncated/corrupt
+    # state file behind for the next run to trip over.
+    $stateTempPath = "$StateFilePath.tmp"
+    ($newState | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $stateTempPath -Encoding UTF8
+    Move-Item -LiteralPath $stateTempPath -Destination $StateFilePath -Force
 
     # ============ ALERT ============
 
@@ -424,8 +468,6 @@ $($rowsHtml -join "`n")
 </body></html>
 "@
 
-        Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
-
         foreach ($item in $alertItems) {
             $line = "[$severity] $($item.DomainController): $($item.PreviousStatus) -> $($item.CurrentStatus)$(if ($item.FailingTests.Count -gt 0) { ' (' + ($item.FailingTests -join '; ') + ')' })"
             Write-Warning $line
@@ -465,7 +507,7 @@ $($rowsHtml -join "`n")
                     Send-MailMessage @mailParams
                 }
                 catch {
-                    Write-Error "Failed to send DC health alert email: $($_.Exception.Message)"
+                    Write-Warning "Failed to send DC health alert email: $($_.Exception.Message). Alert was still logged to '$AlertLogPath'."
                 }
             }
         }

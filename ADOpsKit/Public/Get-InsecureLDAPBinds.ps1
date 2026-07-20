@@ -89,6 +89,12 @@ function Get-InsecureLDAPBinds {
         }
 
         foreach ($LdapEvent in $FilteredEvents) {
+          try {
+            if (-not $LdapEvent.InsertionStrings -or $LdapEvent.InsertionStrings.Count -lt 3) {
+                Write-Warning "Event on $ComputerName has fewer than 3 InsertionStrings (unexpected format) - skipping."
+                continue
+            }
+
             $Client      = $LdapEvent.InsertionStrings[0]
             $User        = $LdapEvent.InsertionStrings[1]
             $BindTypeRaw = $LdapEvent.InsertionStrings[2]
@@ -96,9 +102,22 @@ function Get-InsecureLDAPBinds {
             $IPAddress = $null
             $Port      = $null
 
-            if ($Client -and $Client.LastIndexOf(":") -gt 0) {
-                $IPAddress = $Client.Substring(0, $Client.LastIndexOf(":"))
-                $Port      = $Client.Substring($Client.LastIndexOf(":") + 1)
+            if ($Client) {
+                # Client can be "ip:port" (IPv4) or "[ipv6]:port" (IPv6, bracketed).
+                # Anchor on the trailing ':<port>' rather than a blind LastIndexOf,
+                # which mis-splits IPv6 addresses that contain multiple colons.
+                if ($Client -match '^\[(?<addr>[0-9A-Fa-f:]+)\]:(?<port>\d+)$') {
+                    $IPAddress = $Matches.addr
+                    $Port      = $Matches.port
+                }
+                elseif ($Client -match '^(?<addr>[^:]+):(?<port>\d+)$') {
+                    $IPAddress = $Matches.addr
+                    $Port      = $Matches.port
+                }
+                else {
+                    # No recognizable trailing port (e.g. bare IPv6 with no port) - keep the raw value.
+                    $IPAddress = $Client
+                }
             }
 
             $BindType = switch ($BindTypeRaw) {
@@ -125,6 +144,10 @@ function Get-InsecureLDAPBinds {
                 User       = $User
                 BindType   = $BindType
             })
+          }
+          catch {
+            Write-Warning "Failed to process an insecure LDAP bind event on $ComputerName : $($_.Exception.Message)"
+          }
         }
 
         Write-Host "Events collected from $ComputerName."

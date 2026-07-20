@@ -642,8 +642,10 @@ function Get-GPOInventoryWithSettings {
                 -ReportType Xml `
                 -ErrorAction Stop
 
-            [xml]$reportXml = $reportXmlText
-
+            # Save the raw XML as soon as it's retrieved, before attempting to parse
+            # it - a malformed report is exactly the case where an operator most
+            # needs this diagnostic artifact, and saving only after a successful
+            # [xml] cast meant that one case never wrote the file.
             if (-not [string]::IsNullOrWhiteSpace($SaveXmlFolder)) {
                 if (-not (Test-Path -Path $SaveXmlFolder)) {
                     New-Item -ItemType Directory -Path $SaveXmlFolder -Force | Out-Null
@@ -659,6 +661,8 @@ function Get-GPOInventoryWithSettings {
                 $xmlPath = Join-Path -Path $SaveXmlFolder -ChildPath "$fileBaseName.xml"
                 $reportXmlText | Out-File -FilePath $xmlPath -Encoding UTF8
             }
+
+            [xml]$reportXml = $reportXmlText
         }
         catch {
             return [PSCustomObject]@{
@@ -880,7 +884,13 @@ function Get-GPOInventoryWithSettings {
                 $wmiFilterName = $gpo.WmiFilter.Name
 
                 try {
-                    $wmiFilterId = ($gpo.WmiFilter.Path -split '"')[1]
+                    # WmiFilter.Path looks like: MSFT_SomFilter.Domain="corp.contoso.com",ID="{GUID}"
+                    # Match the ID field explicitly rather than splitting on quotes positionally -
+                    # a plain split put the domain name (not the GUID) into $wmiFilterId here.
+                    $wmiFilterId = $null
+                    if ($gpo.WmiFilter.Path -match 'ID="(?<id>\{[0-9A-Fa-f-]+\})"') {
+                        $wmiFilterId = $Matches['id']
+                    }
 
                     $matchedWmiFilter = $wmiFilters |
                         Where-Object {

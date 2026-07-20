@@ -38,9 +38,13 @@ function Register-ADOpsKitScheduledTasks {
           Scheduler
 
     Security notes:
-        - Task scripts with SMTP authentication embed the SMTP password.
-          The Scripts folder ACL is therefore restricted to SYSTEM,
-          Administrators, and the service account.
+        - Task scripts with SMTP authentication store the SMTP password as
+          a machine-scoped DPAPI-encrypted blob - the plaintext is never
+          written to disk, and the blob only decrypts on this computer.
+          If a task script is copied to another machine, re-run this
+          function there to re-encrypt. The Scripts folder ACL is
+          additionally restricted to SYSTEM, Administrators, and the
+          service account.
         - The saved configuration file never contains passwords.
 
     After a successful run the chosen settings (minus passwords) are saved
@@ -351,9 +355,17 @@ namespace ADOpsKitInternal {
             }
             $credLine = ''
             if ($EmailConfig.Username) {
-                $sqUser   = ConvertTo-EscapedLiteral $EmailConfig.Username
-                $sqPass   = ConvertTo-EscapedLiteral $EmailConfig.Password
-                $credLine = "            `$mailParams['Credential'] = New-Object System.Management.Automation.PSCredential('$sqUser', (ConvertTo-SecureString '$sqPass' -AsPlainText -Force))"
+                $sqUser  = ConvertTo-EscapedLiteral $EmailConfig.Username
+                # Machine-scoped DPAPI: only an encrypted blob is written into
+                # the generated task script. It decrypts only on this computer,
+                # so the plaintext password never reaches disk.
+                $encPass = Protect-ADOKMachineSecret -PlainText $EmailConfig.Password
+                $credLine = @"
+            Add-Type -AssemblyName System.Security
+            `$smtpPwdBytes = [System.Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String('$encPass'), `$null, [System.Security.Cryptography.DataProtectionScope]::LocalMachine)
+            `$mailParams['Credential'] = New-Object System.Management.Automation.PSCredential('$sqUser', (ConvertTo-SecureString ([System.Text.Encoding]::UTF8.GetString(`$smtpPwdBytes)) -AsPlainText -Force))
+            `$smtpPwdBytes = `$null
+"@
             }
 
             $emailBlock = @"
@@ -563,8 +575,17 @@ exit `$exitCode
             $securePwd = Read-Host "  Password for $account" -AsSecureString
             $plainPwd  = Get-PlainText -Secure $securePwd
 
-            Write-Host "  Validating credentials (batch logon check)..." -ForegroundColor DarkGray
-            $check = Test-ServiceAccountCredential -Account $account -Password $plainPwd
+            if ($WhatIfPreference) {
+                # -WhatIf must not perform a live authentication attempt: each failed
+                # check counts toward the account's AD lockout threshold, which is a
+                # real side effect a dry run must never cause.
+                Write-Host "  [WhatIf] Skipping live credential validation (no changes previewed)." -ForegroundColor DarkGray
+                $check = [pscustomobject]@{ Status = 'Unknown'; Message = 'Skipped under -WhatIf' }
+            }
+            else {
+                Write-Host "  Validating credentials (batch logon check)..." -ForegroundColor DarkGray
+                $check = Test-ServiceAccountCredential -Account $account -Password $plainPwd
+            }
 
             switch ($check.Status) {
                 'Valid' {
@@ -799,13 +820,18 @@ exit `$exitCode
     }
 
     if (-not (Test-Path -LiteralPath $OutputBasePath)) {
-        New-Item -ItemType Directory -Path $OutputBasePath -Force | Out-Null
+        if ($PSCmdlet.ShouldProcess($OutputBasePath, 'Create output base folder')) {
+            New-Item -ItemType Directory -Path $OutputBasePath -Force | Out-Null
+        }
     }
 
-    # --- Lock down the Scripts folder (task scripts can embed SMTP credentials) ---
+    # --- Lock down the Scripts folder (defense in depth; task scripts hold at
+    #     most a machine-scoped DPAPI-encrypted SMTP password, no plaintext) ---
     $scriptDir = Join-Path $OutputBasePath 'Scripts'
     if (-not (Test-Path -LiteralPath $scriptDir)) {
-        New-Item -ItemType Directory -Path $scriptDir -Force | Out-Null
+        if ($PSCmdlet.ShouldProcess($scriptDir, 'Create Scripts folder')) {
+            New-Item -ItemType Directory -Path $scriptDir -Force | Out-Null
+        }
     }
     if ($PSCmdlet.ShouldProcess($scriptDir, 'Restrict permissions to SYSTEM, Administrators and the service account')) {
         Protect-ScriptsFolder -Path $scriptDir -Account $account

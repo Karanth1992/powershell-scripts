@@ -134,9 +134,14 @@
     Write-Host "  Window : Last $DaysBack days (since $($Since.ToString('yyyy-MM-dd')))" -ForegroundColor Magenta
     Write-Host "  Report : $ReportFile`n" -ForegroundColor Magenta
 
-    # Verify DC is reachable
-    if (-not (Test-Connection -ComputerName $DCName -Count 1 -Quiet)) {
-        throw "Cannot reach $DCName."
+    # Verify DC is reachable. ICMP alone is not a reliable signal in this
+    # environment - firewalls commonly block ping while LDAP/SMB (everything
+    # the rest of this scan actually needs) remain open, and an ICMP-only
+    # check would abort the whole scan on a DC that is otherwise perfectly
+    # reachable. Fall back to a TCP probe on LDAP (389) before giving up.
+    $icmpReachable = Test-Connection -ComputerName $DCName -Count 1 -Quiet
+    if (-not $icmpReachable -and -not (Test-ADOKTcpPort -ComputerName $DCName -Port 389 -TimeoutSeconds 5)) {
+        throw "Cannot reach $DCName (ICMP and LDAP port 389 both failed)."
     }
 
     #endregion
@@ -145,6 +150,7 @@
 
     Write-Section "1. Basic DC Information"
 
+    $DC = $null
     try {
         $splatDC = @{ Identity = $DCName; ErrorAction = "Stop" }
         if ($Credential) { $splatDC.Credential = $Credential }
@@ -206,6 +212,7 @@
     }
     catch {
         Write-Check "FSMO Query" "FAIL" $_.Exception.Message
+        $Results["FSMO"] = @{ QueryFailed = $true; Error = $_.Exception.Message }
     }
 
     #endregion
@@ -243,6 +250,8 @@
     }
     catch {
         Write-Check "Replication Query" "FAIL" $_.Exception.Message
+        $Results["ReplicationQueue"]    = @{ QueryFailed = $true; Error = $_.Exception.Message }
+        $Results["ReplicationFailures"] = @{ QueryFailed = $true; Error = $_.Exception.Message }
     }
 
     #endregion
@@ -298,6 +307,7 @@
 
     Write-Section "5. DNS Role & Zone Hosting"
 
+    $dnsService = $null
     try {
         $dnsService = Get-Service -ComputerName $DCName -Name DNS -ErrorAction Stop
         $dnsStatus  = if ($dnsService.Status -eq "Running") { "WARN" } else { "OK" }
@@ -385,6 +395,7 @@
     }
     catch {
         Write-Check "Site/Subnet Query" "FAIL" $_.Exception.Message
+        $Results["Subnets"] = @{ QueryFailed = $true; Error = $_.Exception.Message }
     }
 
     #endregion
@@ -452,13 +463,25 @@
     Write-Section "10. Active RDP / Interactive Sessions"
 
     try {
-        $sessions = query session /server:$DCName 2>&1
-        Write-Host "  Active Sessions on $DCName :" -ForegroundColor Yellow
-        $sessions | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
-        $Results["ActiveSessions"] = $sessions
+        $sessions = @(query session /server:$DCName 2>&1)
+        # query.exe's exit code is not a reliable success signal - it has been
+        # observed to return non-zero even when it prints a valid session table.
+        # Recognize failure by content instead: a real session table always has
+        # a "SESSIONNAME ... USERNAME ..." header line; known error text does not.
+        $looksLikeSessionTable = $sessions | Where-Object { $_ -match 'SESSIONNAME\s+USERNAME' }
+        if (-not $looksLikeSessionTable) {
+            Write-Check "Session Query" "WARN" "query session on $DCName did not return a recognizable session table (exit code $LASTEXITCODE): $($sessions -join ' ')"
+            $Results["ActiveSessions"] = @{ QueryFailed = $true; ExitCode = $LASTEXITCODE; RawOutput = $sessions }
+        }
+        else {
+            Write-Host "  Active Sessions on $DCName :" -ForegroundColor Yellow
+            $sessions | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
+            $Results["ActiveSessions"] = $sessions
+        }
     }
     catch {
         Write-Check "Session Query" "WARN" $_.Exception.Message
+        $Results["ActiveSessions"] = @{ QueryFailed = $true; Error = $_.Exception.Message }
     }
 
     #endregion
@@ -503,6 +526,7 @@
     }
     catch {
         Write-Check "GC Query" "FAIL" $_.Exception.Message
+        $Results["GlobalCatalog"] = @{ QueryFailed = $true; Error = $_.Exception.Message }
     }
 
     #endregion
@@ -511,17 +535,36 @@
 
     Write-Section "13. Pre-Decommission Checklist Summary"
 
+    function Get-ChecklistStatusForResult {
+        param(
+            [string]$SectionName,
+            $ResultValue,
+            [string]$CountProperty,
+            [string]$ActionText,
+            [string]$OkText = "OK"
+        )
+        if ($ResultValue -is [hashtable] -and $ResultValue["QueryFailed"]) {
+            return "UNKNOWN — query failed, see section $SectionName"
+        }
+        $value = if ($CountProperty) { $ResultValue.$CountProperty } else { $ResultValue }
+        $triggered = if ($value -is [bool]) { $value } else { (@($value) | Measure-Object).Count -gt 0 }
+        if ($triggered) {
+            return $ActionText
+        }
+        return $OkText
+    }
+
     $checklist = [ordered]@{
-        "Transfer FSMO roles off this DC"                   = if ($Results["FSMO"].HeldByTargetDC.Count -gt 0) { "ACTION REQUIRED" } else { "OK — No roles held" }
-        "Resolve replication failures"                      = if ($Results["ReplicationFailures"].Count -gt 0) { "ACTION REQUIRED" } else { "OK" }
-        "Drain replication queue"                           = if ($Results["ReplicationQueue"].Count -gt 0)    { "ACTION REQUIRED" } else { "OK" }
-        "Reassign/remove subnets from site"                 = if ($Results["Subnets"].Count -gt 0)             { "ACTION REQUIRED" } else { "OK" }
-        "Migrate DNS zones / remove from client DNS"        = if ($DC.IsGlobalCatalog)                          { "VERIFY" }         else { "VERIFY" }
-        "Ensure another GC exists in this site"             = if ($Results["GlobalCatalog"].IsGC)               { "ACTION REQUIRED" } else { "OK" }
+        "Transfer FSMO roles off this DC"                   = Get-ChecklistStatusForResult -SectionName "2" -ResultValue $Results["FSMO"] -CountProperty "HeldByTargetDC" -ActionText "ACTION REQUIRED" -OkText "OK — No roles held"
+        "Resolve replication failures"                      = Get-ChecklistStatusForResult -SectionName "3" -ResultValue $Results["ReplicationFailures"] -ActionText "ACTION REQUIRED"
+        "Drain replication queue"                           = Get-ChecklistStatusForResult -SectionName "3" -ResultValue $Results["ReplicationQueue"] -ActionText "ACTION REQUIRED"
+        "Reassign/remove subnets from site"                 = Get-ChecklistStatusForResult -SectionName "7" -ResultValue $Results["Subnets"] -ActionText "ACTION REQUIRED"
+        "Migrate DNS zones / remove from client DNS"        = if ($null -eq $dnsService) { "UNKNOWN — query failed, see section 5" } elseif ($dnsService.Status -eq "Running") { "VERIFY — DNS service running, migrate zones first" } else { "OK — not hosting DNS" }
+        "Ensure another GC exists in this site"             = Get-ChecklistStatusForResult -SectionName "12" -ResultValue $Results["GlobalCatalog"] -CountProperty "IsGC" -ActionText "ACTION REQUIRED"
         "Verify no clients homed solely to this DC"         = "VERIFY — see LogonActivity section"
         "Check for active user sessions"                    = "VERIFY — see ActiveSessions section"
-        "Resolve Directory Service errors"                  = if ($Results["DirectoryServiceEvents"].Count -gt 0) { "REVIEW" } else { "OK" }
-        "Resolve DFSR/SYSVOL errors"                        = if ($Results["DFSREvents"].Count -gt 0)           { "REVIEW" }  else { "OK" }
+        "Resolve Directory Service errors"                  = Get-ChecklistStatusForResult -SectionName "9" -ResultValue $Results["DirectoryServiceEvents"] -ActionText "REVIEW"
+        "Resolve DFSR/SYSVOL errors"                        = Get-ChecklistStatusForResult -SectionName "6" -ResultValue $Results["DFSREvents"] -ActionText "REVIEW"
         "Notify dependent applications / service accounts"  = "MANUAL — review TopKerberosAccounts list"
         "Run: dcpromo /forceremoval only as last resort"    = "NOTE — use Uninstall-ADDSDomainController"
     }
@@ -530,6 +573,7 @@
         $status = switch -Wildcard ($item.Value) {
             "OK*"              { "OK"   }
             "ACTION REQUIRED*" { "WARN" }
+            "UNKNOWN*"         { "WARN" }
             "VERIFY*"          { "INFO" }
             "REVIEW*"          { "INFO" }
             "MANUAL*"          { "INFO" }
@@ -546,13 +590,13 @@
     function ConvertTo-HtmlTable {
         param([object[]]$Data, [string]$Title)
         if (-not $Data -or $Data.Count -eq 0) { return "<p><em>No data.</em></p>" }
-        $html  = "<h3>$Title</h3><table><thead><tr>"
+        $html  = "<h3>$(ConvertTo-ADOKXmlEscaped $Title)</h3><table><thead><tr>"
         $props = $Data[0].PSObject.Properties.Name
-        $props | ForEach-Object { $html += "<th>$_</th>" }
+        $props | ForEach-Object { $html += "<th>$(ConvertTo-ADOKXmlEscaped $_)</th>" }
         $html += "</tr></thead><tbody>"
         foreach ($row in $Data) {
             $html += "<tr>"
-            $props | ForEach-Object { $html += "<td>$($row.$_)</td>" }
+            $props | ForEach-Object { $html += "<td>$(ConvertTo-ADOKXmlEscaped ([string]$row.$_))</td>" }
             $html += "</tr>"
         }
         $html += "</tbody></table>"
@@ -564,7 +608,7 @@
     <html lang="en">
     <head>
     <meta charset="UTF-8">
-    <title>DC Decommission Readiness — $DCName</title>
+    <title>DC Decommission Readiness — $(ConvertTo-ADOKXmlEscaped $DCName)</title>
     <style>
       body    { font-family: Consolas, monospace; background:#1e1e2e; color:#cdd6f4; margin:2rem; }
       h1      { color:#cba6f7; border-bottom:2px solid #cba6f7; padding-bottom:.4rem; }
@@ -583,7 +627,7 @@
     <body>
     <h1>DC Pre-Decommission Readiness Report</h1>
     <p class="meta">
-      Target DC : <strong>$DCName</strong><br>
+      Target DC : <strong>$(ConvertTo-ADOKXmlEscaped $DCName)</strong><br>
       Generated : <strong>$($StartTime.ToString('yyyy-MM-dd HH:mm:ss'))</strong><br>
       Scan window : <strong>Last $DaysBack days</strong>
     </p>
@@ -593,7 +637,7 @@
 
     <h2>2. FSMO Roles</h2>
     $(ConvertTo-HtmlTable -Data ($Results["FSMO"].Roles.GetEnumerator() | Select-Object @{N="Role";E={$_.Key}},@{N="Holder";E={$_.Value}}) -Title "")
-    <p class="warn">Roles held by this DC: <strong>$($Results["FSMO"].HeldByTargetDC -join ", ")</strong></p>
+    <p class="warn">Roles held by this DC: <strong>$(ConvertTo-ADOKXmlEscaped ($Results["FSMO"].HeldByTargetDC -join ", "))</strong></p>
 
     <h2>3. Replication Partners</h2>
     $(ConvertTo-HtmlTable -Data $Results["ReplicationPartners"] -Title "")
@@ -614,7 +658,7 @@
     $(ConvertTo-HtmlTable -Data $Results["Subnets"] -Title "")
 
     <h2>8. Netlogon Log (last 50 LOGON entries)</h2>
-    <pre>$(($Results["NetlogonLog"] -join "`n"))</pre>
+    <pre>$(ConvertTo-ADOKXmlEscaped ($Results["NetlogonLog"] -join "`n"))</pre>
 
     <h2>9. Directory Service Events</h2>
     $(ConvertTo-HtmlTable -Data $Results["DirectoryServiceEvents"] -Title "")

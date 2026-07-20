@@ -97,6 +97,9 @@ function Get-ADArchitectureAssessment {
         [ValidateRange(100, 30000)]
         [int]$PortTimeoutMs = 1000,
 
+        [ValidateRange(1000, 60000)]
+        [int]$ServiceCheckTimeoutMs = 15000,
+
         [switch]$SkipPortChecks,
 
         [switch]$SkipServiceChecks,
@@ -104,8 +107,9 @@ function Get-ADArchitectureAssessment {
         [switch]$IncludeGpoScan
     )
 
+    Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
-    $script:ScriptVersion = '1.5'
+    $script:ScriptVersion = '1.6'
     $script:Findings = New-Object System.Collections.ArrayList
     $script:CollectionWarnings = New-Object System.Collections.ArrayList
     $script:QueryServer = $null
@@ -132,7 +136,9 @@ function Get-ADArchitectureAssessment {
         Write-Host ''
         Write-Host 'Full error record:'
         $_ | Format-List * -Force
-        break
+        # Re-throw so the caller/exit code sees this as a genuine failure - a bare
+        # 'break' here would silently end the function without propagating the error.
+        throw
     }
 
     function Write-Step {
@@ -988,7 +994,13 @@ function Get-ADArchitectureAssessment {
 
     $groups = @(Get-ADGroup -Filter * -Properties GroupCategory, GroupScope, ManagedBy, WhenCreated, DistinguishedName -ResultPageSize 1000 -Server $script:QueryServer)
     $ous = @(Get-ADOrganizationalUnit -Filter * -Properties ProtectedFromAccidentalDeletion, gPLink, WhenCreated -ResultPageSize 1000 -Server $script:QueryServer)
-    $fineGrainedPasswordPolicies = @(Get-ADFineGrainedPasswordPolicy -Filter * -Server $script:QueryServer -ErrorAction SilentlyContinue)
+    $fineGrainedPasswordPolicies = @()
+    try {
+        $fineGrainedPasswordPolicies = @(Get-ADFineGrainedPasswordPolicy -Filter * -Server $script:QueryServer -ErrorAction Stop)
+    }
+    catch {
+        Add-CollectionWarning -Area 'Account Policy' -Message "Could not collect fine-grained password policies. $($_.Exception.Message)"
+    }
 
     $accountSummary = [pscustomobject]@{
         TotalUsers                    = (Get-ObjectCount $users)
@@ -1351,6 +1363,57 @@ function Get-ADArchitectureAssessment {
         Add-CollectionWarning -Area 'DC Port Reachability' -Message 'Port checks were skipped by parameter.'
     }
 
+    function Invoke-ADOKAssessmentWithTimeout {
+        <#
+        .SYNOPSIS
+            Runs a scriptblock in a separate runspace with an enforced wall-clock
+            timeout, so a blocking WMI/DCOM call to an unreachable DC (firewall
+            silently dropping packets rather than rejecting them, which can hang
+            far longer than a TCP timeout) cannot stall the whole assessment.
+        #>
+        param(
+            [Parameter(Mandatory)]
+            [scriptblock]$ScriptBlock,
+
+            [AllowEmptyCollection()]
+            [object[]]$ArgumentList = @(),
+
+            [Parameter(Mandatory)]
+            [int]$TimeoutMs
+        )
+
+        $powershell = [powershell]::Create()
+        [void]$powershell.AddScript($ScriptBlock)
+        foreach ($argumentValue in $ArgumentList) {
+            [void]$powershell.AddArgument($argumentValue)
+        }
+
+        $asyncResult = $powershell.BeginInvoke()
+        $completed = $asyncResult.AsyncWaitHandle.WaitOne($TimeoutMs)
+
+        if (-not $completed) {
+            $powershell.Stop()
+            $powershell.Dispose()
+            return [pscustomobject]@{ TimedOut = $true; Output = $null; ErrorMessage = $null }
+        }
+
+        $output = $null
+        $errorMessage = $null
+        try {
+            $output = $powershell.EndInvoke($asyncResult)
+        }
+        catch {
+            $innerException = $_.Exception.InnerException
+            $errorMessage = if ($innerException) { $innerException.Message } else { $_.Exception.Message }
+        }
+        if (-not $errorMessage -and $powershell.Streams.Error.Count -gt 0) {
+            $errorMessage = $powershell.Streams.Error[0].Exception.Message
+        }
+        $powershell.Dispose()
+
+        return [pscustomobject]@{ TimedOut = $false; Output = $output; ErrorMessage = $errorMessage }
+    }
+
     Write-Step "Collecting service posture from domain controllers"
     $serviceRows = New-Object System.Collections.ArrayList
     if (-not $SkipServiceChecks) {
@@ -1377,7 +1440,18 @@ function Get-ADArchitectureAssessment {
 
         foreach ($dc in $dcInventory) {
             try {
-                $remoteServices = @(Get-WmiObject -Class Win32_Service -ComputerName $dc.HostName -ErrorAction Stop)
+                $wmiResult = Invoke-ADOKAssessmentWithTimeout -TimeoutMs $ServiceCheckTimeoutMs -ScriptBlock {
+                    param($HostName)
+                    @(Get-WmiObject -Class Win32_Service -ComputerName $HostName -ErrorAction Stop)
+                } -ArgumentList @($dc.HostName)
+
+                if ($wmiResult.TimedOut) {
+                    throw "Service query timed out after $ServiceCheckTimeoutMs ms"
+                }
+                if ($wmiResult.ErrorMessage) {
+                    throw $wmiResult.ErrorMessage
+                }
+                $remoteServices = @($wmiResult.Output)
 
                 foreach ($serviceName in $serviceNamesToCheck) {
                     $service = $remoteServices | Where-Object { $_.Name -eq $serviceName } | Select-Object -First 1

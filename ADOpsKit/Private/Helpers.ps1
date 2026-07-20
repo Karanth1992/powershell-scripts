@@ -128,6 +128,37 @@ function ConvertTo-ADOKXmlEscaped {
     $s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;'
 }
 
+function ConvertTo-ADOKXPathStringLiteral {
+    <#
+    .SYNOPSIS
+        Builds a safely-quoted XPath 1.0 string literal from an arbitrary value.
+    .DESCRIPTION
+        XPath 1.0 string literals have no escape character, so a value that
+        contains the quote character being used to delimit it cannot simply be
+        interpolated - doing so lets the value break out of the literal and
+        alter the expression (e.g. a username like o'brien breaking a
+        single-quoted FilterXPath filter). This picks whichever quote character
+        the value doesn't contain; if it contains both, it falls back to
+        concat() with each quote character emitted as its own single-character
+        literal in the other quote style, per the standard XPath 1.0 pattern.
+    .NOTES
+        Internal ADOpsKit helper. Not exported.
+    #>
+    param([string]$Value)
+
+    if ($null -eq $Value) { return "''" }
+    if ($Value -notmatch "'") { return "'$Value'" }
+    if ($Value -notmatch '"') { return "`"$Value`"" }
+
+    $segments = $Value -split "'"
+    $parts    = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -lt $segments.Count; $i++) {
+        if ($i -gt 0) { $parts.Add('"''"') }
+        if ($segments[$i]) { $parts.Add("'$($segments[$i])'") }
+    }
+    return "concat($($parts -join ','))"
+}
+
 # ---------------------------------------------------------------------------
 # Console step / status helpers
 # (from Get-ADReplicationTopologyDiagram's Write-Step / Write-Ok / Write-Warn)
@@ -231,4 +262,37 @@ function Get-ADOKDcNameFromNtdsDN {
     param([string]$DN)
     $m = [regex]::Match($DN, 'CN=NTDS Settings,CN=([^,]+)')
     if ($m.Success) { $m.Groups[1].Value } else { '' }
+}
+
+# ---------------------------------------------------------------------------
+# Machine-scoped DPAPI secret protection
+# (used by Register-ADOpsKitScheduledTasks and Register-ADDCDiagHealthMonitor
+# so generated task scripts never contain a plaintext SMTP password)
+# ---------------------------------------------------------------------------
+
+function Protect-ADOKMachineSecret {
+    <#
+    .SYNOPSIS
+        Encrypts a string with machine-scoped DPAPI and returns a Base64 blob.
+    .NOTES
+        Internal ADOpsKit helper. Not exported.
+        DataProtectionScope LocalMachine: the blob can be decrypted by any
+        principal on the SAME computer (including a task's run-as service
+        account) but not on any other computer. This lets a generated task
+        script carry a secret at rest without the plaintext ever touching
+        disk. If the script is copied to another machine, re-run the
+        registration function there to produce a new blob.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$PlainText
+    )
+    Add-Type -AssemblyName System.Security -ErrorAction Stop
+    $protected = [System.Security.Cryptography.ProtectedData]::Protect(
+        [System.Text.Encoding]::UTF8.GetBytes($PlainText),
+        $null,
+        [System.Security.Cryptography.DataProtectionScope]::LocalMachine
+    )
+    [Convert]::ToBase64String($protected)
 }

@@ -6,7 +6,7 @@ function Test-DCPortHealth {
 
 .DESCRIPTION
     Checks all domain controllers in the current domain against
-    a predefined list of ports required for AD health — including
+    a predefined list of ports required for AD health - including
     Kerberos, LDAP, DNS, RPC, SMB, and Global Catalog.
 
     Uses async TCP connections with a configurable timeout so
@@ -37,19 +37,19 @@ function Test-DCPortHealth {
     Run as Domain Admin or equivalent with network access to DCs.
 
     Port reference:
-    88    — Kerberos
-    53    — DNS
-    135   — RPC Endpoint Mapper
-    137   — NetBIOS Name Service
-    138   — NetBIOS Datagram
-    139   — NetBIOS Session
-    389   — LDAP
-    445   — SMB
-    464   — Kerberos Password Change
-    636   — LDAPS
-    3268  — Global Catalog LDAP
-    3269  — Global Catalog LDAPS
-    3389  — RDP
+    88    - Kerberos
+    53    - DNS
+    135   - RPC Endpoint Mapper
+    137   - NetBIOS Name Service
+    138   - NetBIOS Datagram
+    139   - NetBIOS Session
+    389   - LDAP
+    445   - SMB
+    464   - Kerberos Password Change
+    636   - LDAPS
+    3268  - Global Catalog LDAP
+    3269  - Global Catalog LDAPS
+    3389  - RDP
 #>
 
     [CmdletBinding()]
