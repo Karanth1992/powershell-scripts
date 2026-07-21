@@ -71,7 +71,10 @@ jobs:
           # stray .claude/settings.local.json that was sitting untracked in the
           # working tree at publish time. Stage only the files that actually
           # belong in the package instead of trusting the tree to be clean.
-          $stageDir = Join-Path $env:RUNNER_TEMP 'ADOpsKit-publish'
+          # The staging leaf folder must be named exactly 'ADOpsKit' - Publish-Module
+          # validates the module name against the containing folder name, not just
+          # the manifest contents, and rejects a mismatched folder name.
+          $stageDir = Join-Path $env:RUNNER_TEMP 'ADOpsKit-publish\ADOpsKit'
           New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
           Copy-Item -Path './ADOpsKit/ADOpsKit.psd1', './ADOpsKit/ADOpsKit.psm1', './ADOpsKit/Public', './ADOpsKit/Private', './ADOpsKit/en-US' -Destination $stageDir -Recurse -Force
           Write-Host "Staged package contents:" -ForegroundColor Cyan
