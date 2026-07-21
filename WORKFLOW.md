@@ -191,7 +191,8 @@ flowchart LR
     end
 
     V3 -->|Any check fails| ABORT(["Publish aborted\nFix and re-tag"])
-    V3 -->|All pass| PUB["Publish-Module\n-NuGetApiKey $env:PSGALLERY_API_KEY"]
+    V3 -->|All pass| STAGE["Stage a clean copy\n(psd1/psm1/Public/Private/en-US only)"]
+    STAGE --> PUB["Publish-Module\n-NuGetApiKey $env:PSGALLERY_API_KEY"]
     PUB --> GAL(["PowerShell Gallery\nInstall-Module ADOpsKit\nUpdate-Module ADOpsKit"])
 
     style GAL fill:#d1fae5,stroke:#10b981,color:#065f46
@@ -203,7 +204,7 @@ flowchart LR
 
 1. Bump `ModuleVersion` in [`ADOpsKit/ADOpsKit.psd1`](ADOpsKit/ADOpsKit.psd1) and add a matching `[<version>]` entry to [`CHANGELOG.md`](CHANGELOG.md).
 2. Commit and push to `main` — `pssa.yml` lints and tests the change.
-3. Tag the release and push the tag: `git tag v1.4.0 && git push origin v1.4.0`.
+3. Tag the release and push the tag: `git tag v<version> && git push origin v<version>` (e.g. `git tag v1.5.0 && git push origin v1.5.0`).
 4. `publish.yml` re-verifies the tag matches the manifest version, checks for a CHANGELOG entry, re-runs lint + tests, then runs `Publish-Module` using the `PSGALLERY_API_KEY` repository secret.
 
 ---
@@ -220,6 +221,9 @@ flowchart LR
 
 | Version | Date | What changed |
 |---------|------|-------------|
+| **1.5.0** | 2026-07-21 | Security/reliability release — fixed a non-functional `Get-EntraConnectSyncStatus` (read properties that don't exist on the real ADSync types), removed hidden WinRM dependencies in `Get-ADForestHealth` and `Get-EntraConnectSyncStatus`, fixed HTML/XPath injection risks, `Set-StrictMode`/`-LiteralPath` consistency pass across every script. See [CHANGELOG.md](CHANGELOG.md#150--2026-07-21) |
+| 1.4.0 | 2026-07-11 | Added `Invoke-ADRealtimeHeartbeat` and `Get-DCDecommissionReadiness`; removed `Get-GPOInventory` (superseded); fixed `Get-AccountLockoutReport` and two `Register-ADOpsKitScheduledTasks` bugs |
+| 1.3.0 | 2026-07-09 | Added `Test-ADDCDiagHealth` and `Register-ADDCDiagHealthMonitor` for near-real-time DC monitoring |
 | **1.2.0** | 2026-07-05 | `Register-ADOpsKitScheduledTasks` overhaul — credential validation, gMSA, config replay, retention, exit codes, ACL hardening |
 | 1.1.6 | 2026-06-29 | Fix `Register-ADOpsKitScheduledTasks` — scripts written to `.ps1` files; dated filenames now expand correctly |
 | 1.1.5 | 2026-06-29 | Fix `Get-AccountLockoutReport` — Int32 overflow; Copy-Item errors when no lockouts |

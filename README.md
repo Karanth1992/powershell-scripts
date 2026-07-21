@@ -30,7 +30,7 @@ Install-Module ADOpsKit
 | `Get-AccountLockoutReport` | Reports locked accounts and traces lockout source via Event ID 4740. |
 | `Get-InsecureLDAPBinds` | Detects unsigned and simple LDAP binds via Event ID 2889. |
 | `Get-GPOInventoryWithSettings` | GPO inventory with links, permissions, status, WMI filters, and configured settings from `Get-GPOReport` XML. |
-| `Get-EntraConnectSyncStatus` | Entra Connect health — sync cycle, connector errors, pending exports, password sync. |
+| `Get-EntraConnectSyncStatus` | Entra Connect health — sync cycle/result, per-connector export/import activity, pending exports, password sync, staging mode. Must run locally on the Entra Connect server. |
 | `Register-ADOpsKitScheduledTasks` | Interactive wizard to schedule any ADOpsKit function as a Windows Scheduled Task. |
 | `Test-ADDCDiagHealth` | Runs the full dcdiag test suite against every DC and emails an alert only on status change or a persistent-failure reminder — a near-real-time monitoring check. |
 | `Register-ADDCDiagHealthMonitor` | Registers `Test-ADDCDiagHealth` as a Scheduled Task on a short repeating interval (default 5 min), turning it into a real-time DC monitoring agent. |
@@ -43,6 +43,7 @@ Install-Module ADOpsKit
 
 | Version | Date | Changes |
 |---------|------|---------|
+| **1.5.0** | 2026-07-21 | Security/reliability release. Fixed `Get-EntraConnectSyncStatus` reading four properties that don't exist on the real ADSync object types — its sync-error detection never actually worked; rewritten to the real schema and its hidden WinRM dependency removed. Removed a hidden WinRM dependency in `Get-ADForestHealth`. Fixed `Get-DCDecommissionReadiness` crashing under strict checking and silently reporting "OK" for checks that failed to run. Added HTML-encoding of AD-sourced values in report output (stored-injection risk). Fixed XPath injection in `Get-AccountLockoutReport`. Rewrote `Enable-DCPerformanceBaseline`'s broken `logman` deployment. Fixed a leaked credential handle and non-fatal secrets-folder ACL failure in `Register-ADDCDiagHealthMonitor`. Fixed `Register-ADOpsKitScheduledTasks` performing live AD authentication under `-WhatIf`. Added atomic state-file writes to `Invoke-ADRealtimeHeartbeat`/`Test-ADDCDiagHealth`. Added `Set-StrictMode -Version Latest` and consistent `-LiteralPath` usage across every script. Full details: [CHANGELOG.md](CHANGELOG.md#150--2026-07-21) |
 | **1.4.0** | 2026-07-11 | Added `Invoke-ADRealtimeHeartbeat` (30-60s per-DC heartbeat, state-diffed email/Slack alerting) and `Get-DCDecommissionReadiness` (pre-decommission readiness scan). Removed `Get-GPOInventory` (superseded by `Get-GPOInventoryWithSettings`). Fixed `Get-AccountLockoutReport` producing no output with default params, and two `Register-ADOpsKitScheduledTasks` bugs (unqualified account names, single-day weekly schedules) |
 | **1.3.0** | 2026-07-09 | Added `Test-ADDCDiagHealth` (full dcdiag suite, state-diffed alerting) and `Register-ADDCDiagHealthMonitor` (5-minute repeating Scheduled Task) for near-real-time DC monitoring with email alerts on status change |
 | **1.2.0** | 2026-07-05 | `Register-ADOpsKitScheduledTasks` overhaul — upfront credential validation (batch logon check), gMSA support, `-ConfigPath` setup replay, `-RetentionDays` report cleanup, Scripts folder ACL restriction, task exit codes, log rotation, `-WhatIf` support, quoting fixes |
@@ -215,7 +216,7 @@ cd .\powershell-scripts
 | Access denied on remote DCs | Confirm Domain Admin rights or equivalent delegated permissions |
 | WMI failures | Ensure DCOM/WMI firewall exceptions are open; WinRM not required for WMI scripts |
 | Empty output / no events | Increase `-Hours` or `-LookbackMilliseconds`; confirm audit policy logs the target event IDs |
-| Entra Connect script fails | Must run on the Entra Connect server or have WinRM access to it |
+| Entra Connect script fails | Must run locally on the Entra Connect server — remote execution (WinRM) is not supported |
 
 ---
 
