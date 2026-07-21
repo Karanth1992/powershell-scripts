@@ -1,0 +1,9 @@
+# Local Claude Code session/state files - never part of a module package
+.claude/
+!/.claude/skills/
+!/.claude/launch.json
+
+# OS / editor cruft
+*.swp
+Thumbs.db
+.DS_Store

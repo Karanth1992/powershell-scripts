@@ -11,7 +11,7 @@
 RootModule = 'ADOpsKit.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.4.0'
+ModuleVersion = '1.5.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -121,7 +121,7 @@ PrivateData = @{
         # IconUri = ''
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'v1.4.0 - Added Invoke-ADRealtimeHeartbeat (lightweight 30-60s per-DC heartbeat, state-diffed email/Slack alerting) and Get-DCDecommissionReadiness (pre-decommission readiness scan: FSMO, replication, DNS/SYSVOL/DFSR, trusts, GC status). Removed Get-GPOInventory (superseded by Get-GPOInventoryWithSettings). Fixed Get-AccountLockoutReport producing no output with default -TempPath/-SharedPath. Fixed Register-ADOpsKitScheduledTasks silently misresolving unqualified service account names to local accounts, and weekly schedules only allowing a single day of week.'
+        ReleaseNotes = 'v1.5.0 - Security and reliability release. Fixed Get-EntraConnectSyncStatus reading four properties that do not exist on the real ADSync object types, so its sync-error detection never actually worked (always silently reported clean); it now reads the correct schema and correctly surfaces real sync errors. Removed the hidden WinRM/Invoke-Command dependency in Get-ADForestHealth, which failed outright in WinRM-blocked environments despite documentation claiming otherwise. Fixed Get-DCDecommissionReadiness crashing under strict variable checking when a query failed, and silently reporting "OK" on the pre-decommission checklist for checks that had actually failed to run. Added HTML-encoding of AD-sourced values in Get-DCDecommissionReadiness, Get-ADReplicationTopologyDiagram, and Get-ADForestHealth report output (stored-injection risk in reports opened by administrators). Fixed XPath injection in Get-AccountLockoutReport via usernames containing a single quote. Rewrote Enable-DCPerformanceBaseline, whose logman deployment command could not actually execute as intended over WMI and never checked a real exit code. Fixed a leaked credential handle and a non-fatal ACL-hardening failure on a secrets folder in Register-ADDCDiagHealthMonitor. Fixed Register-ADOpsKitScheduledTasks performing a live AD authentication attempt (risking real account lockout) under -WhatIf. Added atomic state-file writes and self-healing on corrupt state to Invoke-ADRealtimeHeartbeat and Test-ADDCDiagHealth, plus per-notification send isolation so one failed alert no longer skips saving state for the run. Added Set-StrictMode -Version Latest and consistent -LiteralPath usage across every script, which surfaced and fixed further latent bugs in Get-GPOInventoryWithSettings and Test-DCPortHealth. Deduplicated a runspace timeout helper that had been copy-pasted between two scripts.'
 
     } # End of PSData hashtable
 

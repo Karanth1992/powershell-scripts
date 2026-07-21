@@ -63,10 +63,25 @@ jobs:
           }
           Write-Host "All $($result.PassedCount) tests passed." -ForegroundColor Green
 
+      - name: Stage a clean copy for publishing
+        shell: pwsh
+        run: |
+          # Publish-Module packages every file under -Path verbatim - it has no
+          # concept of .gitignore. A previous release accidentally shipped a
+          # stray .claude/settings.local.json that was sitting untracked in the
+          # working tree at publish time. Stage only the files that actually
+          # belong in the package instead of trusting the tree to be clean.
+          $stageDir = Join-Path $env:RUNNER_TEMP 'ADOpsKit-publish'
+          New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
+          Copy-Item -Path './ADOpsKit/ADOpsKit.psd1', './ADOpsKit/ADOpsKit.psm1', './ADOpsKit/Public', './ADOpsKit/Private', './ADOpsKit/en-US' -Destination $stageDir -Recurse -Force
+          Write-Host "Staged package contents:" -ForegroundColor Cyan
+          Get-ChildItem -Path $stageDir -Recurse -File | ForEach-Object { Write-Host "  $($_.FullName.Substring($stageDir.Length + 1))" }
+          "STAGE_DIR=$stageDir" >> $env:GITHUB_ENV
+
       - name: Publish to PowerShell Gallery
         shell: pwsh
         env:
           PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
         run: |
-          Publish-Module -Path ./ADOpsKit -NuGetApiKey $env:PSGALLERY_API_KEY -Repository PSGallery
+          Publish-Module -Path $env:STAGE_DIR -NuGetApiKey $env:PSGALLERY_API_KEY -Repository PSGallery
           Write-Host "Published ADOpsKit $($env:GITHUB_REF_NAME) to PowerShell Gallery." -ForegroundColor Green
