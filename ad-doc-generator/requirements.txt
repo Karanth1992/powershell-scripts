@@ -1,0 +1,4 @@
+# Required for normalize.py and render.py: none beyond the standard library.
+# Required only if you run analyze/analyze.py against the live Claude API
+# instead of doing the analysis yourself (see README.md, Stage 3):
+anthropic>=0.118.0

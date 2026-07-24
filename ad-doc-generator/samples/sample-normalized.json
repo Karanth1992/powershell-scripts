@@ -1,0 +1,287 @@
+{
+  "schemaVersion": "1.0",
+  "sourceDomain": "corp.fabrikam-sample.test",
+  "exportedAt": "2026-07-01T12:00:00.0000000Z",
+  "nodes": [
+    {
+      "id": "OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "type": "OU",
+      "label": "Corp",
+      "attributes": {
+        "description": "Top level OU",
+        "hasGpoLink": true,
+        "depth": 1
+      }
+    },
+    {
+      "id": "OU=Servers,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "type": "OU",
+      "label": "Servers",
+      "attributes": {
+        "description": "",
+        "hasGpoLink": true,
+        "depth": 2
+      }
+    },
+    {
+      "id": "OU=Workstations,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "type": "OU",
+      "label": "Workstations",
+      "attributes": {
+        "description": "",
+        "hasGpoLink": false,
+        "depth": 2
+      }
+    },
+    {
+      "id": "OU=Legacy,OU=Servers,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "type": "OU",
+      "label": "Legacy",
+      "attributes": {
+        "description": "Decommissioning candidates",
+        "hasGpoLink": false,
+        "depth": 3
+      }
+    },
+    {
+      "id": "dc:DC01.corp.fabrikam-sample.test",
+      "type": "DomainController",
+      "label": "DC01.corp.fabrikam-sample.test",
+      "attributes": {
+        "site": "HQ-Site",
+        "domain": "corp.fabrikam-sample.test",
+        "isGlobalCatalog": true,
+        "isReadOnly": false,
+        "operatingSystem": "Windows Server 2022",
+        "fsmoRoles": [
+          "PDCEmulator",
+          "RIDMaster",
+          "InfrastructureMaster",
+          "SchemaMaster",
+          "DomainNamingMaster"
+        ]
+      }
+    },
+    {
+      "id": "dc:DC02.corp.fabrikam-sample.test",
+      "type": "DomainController",
+      "label": "DC02.corp.fabrikam-sample.test",
+      "attributes": {
+        "site": "HQ-Site",
+        "domain": "corp.fabrikam-sample.test",
+        "isGlobalCatalog": true,
+        "isReadOnly": false,
+        "operatingSystem": "Windows Server 2022",
+        "fsmoRoles": []
+      }
+    },
+    {
+      "id": "dc:DC03.corp.fabrikam-sample.test",
+      "type": "DomainController",
+      "label": "DC03.corp.fabrikam-sample.test",
+      "attributes": {
+        "site": "",
+        "domain": "corp.fabrikam-sample.test",
+        "isGlobalCatalog": false,
+        "isReadOnly": true,
+        "operatingSystem": "Windows Server 2019",
+        "fsmoRoles": []
+      }
+    },
+    {
+      "id": "site:HQ-Site",
+      "type": "Site",
+      "label": "HQ-Site",
+      "attributes": {
+        "description": "Primary datacenter"
+      }
+    },
+    {
+      "id": "site:Branch-Site",
+      "type": "Site",
+      "label": "Branch-Site",
+      "attributes": {
+        "description": "Regional branch office"
+      }
+    },
+    {
+      "id": "sitelink:HQ-Branch-Link",
+      "type": "SiteLink",
+      "label": "HQ-Branch-Link",
+      "attributes": {
+        "cost": 100,
+        "replicationFrequencyMinutes": 180
+      }
+    },
+    {
+      "id": "gpo:Baseline Security Policy",
+      "type": "GPO",
+      "label": "Baseline Security Policy",
+      "attributes": {}
+    },
+    {
+      "id": "gpo:Server Hardening Policy",
+      "type": "GPO",
+      "label": "Server Hardening Policy",
+      "attributes": {}
+    },
+    {
+      "id": "group:Domain Admins",
+      "type": "Group",
+      "label": "Domain Admins",
+      "attributes": {
+        "memberCount": 3
+      }
+    },
+    {
+      "id": "principal:achen",
+      "type": "Principal",
+      "label": "Alex Chen",
+      "attributes": {
+        "objectClass": "user"
+      }
+    },
+    {
+      "id": "principal:srivera",
+      "type": "Principal",
+      "label": "Sam Rivera",
+      "attributes": {
+        "objectClass": "user"
+      }
+    },
+    {
+      "id": "principal:svc-backup",
+      "type": "Principal",
+      "label": "svc-backup",
+      "attributes": {
+        "objectClass": "user"
+      }
+    },
+    {
+      "id": "group:Enterprise Admins",
+      "type": "Group",
+      "label": "Enterprise Admins",
+      "attributes": {
+        "memberCount": 1
+      }
+    },
+    {
+      "id": "principal:achen",
+      "type": "Principal",
+      "label": "Alex Chen",
+      "attributes": {
+        "objectClass": "user"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "target": "OU=Servers,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "type": "PARENT_OF",
+      "attributes": {}
+    },
+    {
+      "source": "OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "target": "OU=Workstations,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "type": "PARENT_OF",
+      "attributes": {}
+    },
+    {
+      "source": "OU=Servers,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "target": "OU=Legacy,OU=Servers,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "type": "PARENT_OF",
+      "attributes": {}
+    },
+    {
+      "source": "corp.fabrikam-sample.test",
+      "target": "partner.fabrikam-sample.test",
+      "type": "TRUST",
+      "attributes": {
+        "direction": "Bidirectional",
+        "trustType": "Forest",
+        "forestTransitive": true,
+        "sidFilteringQuarantined": false
+      }
+    },
+    {
+      "source": "corp.fabrikam-sample.test",
+      "target": "legacy-domain.fabrikam-sample.test",
+      "type": "TRUST",
+      "attributes": {
+        "direction": "Inbound",
+        "trustType": "External",
+        "forestTransitive": false,
+        "sidFilteringQuarantined": false
+      }
+    },
+    {
+      "source": "dc:DC01.corp.fabrikam-sample.test",
+      "target": "site:HQ-Site",
+      "type": "LOCATED_IN_SITE",
+      "attributes": {}
+    },
+    {
+      "source": "dc:DC02.corp.fabrikam-sample.test",
+      "target": "site:HQ-Site",
+      "type": "LOCATED_IN_SITE",
+      "attributes": {}
+    },
+    {
+      "source": "sitelink:HQ-Branch-Link",
+      "target": "site:HQ-Site",
+      "type": "LINKS_SITE",
+      "attributes": {}
+    },
+    {
+      "source": "sitelink:HQ-Branch-Link",
+      "target": "site:Branch-Site",
+      "type": "LINKS_SITE",
+      "attributes": {}
+    },
+    {
+      "source": "gpo:Baseline Security Policy",
+      "target": "OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "type": "LINKED_TO",
+      "attributes": {
+        "enabled": true,
+        "enforced": true,
+        "order": 1
+      }
+    },
+    {
+      "source": "gpo:Server Hardening Policy",
+      "target": "OU=Servers,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test",
+      "type": "LINKED_TO",
+      "attributes": {
+        "enabled": true,
+        "enforced": false,
+        "order": 1
+      }
+    },
+    {
+      "source": "principal:achen",
+      "target": "group:Domain Admins",
+      "type": "MEMBER_OF",
+      "attributes": {}
+    },
+    {
+      "source": "principal:srivera",
+      "target": "group:Domain Admins",
+      "type": "MEMBER_OF",
+      "attributes": {}
+    },
+    {
+      "source": "principal:svc-backup",
+      "target": "group:Domain Admins",
+      "type": "MEMBER_OF",
+      "attributes": {}
+    },
+    {
+      "source": "principal:achen",
+      "target": "group:Enterprise Admins",
+      "type": "MEMBER_OF",
+      "attributes": {}
+    }
+  ]
+}

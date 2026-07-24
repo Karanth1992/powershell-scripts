@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fabrikam Sample AD Architecture Assessment Report v1.0</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 0; background: #F4F6F8; color: #1B1F23; }
+  header { background: #27425D; color: #FFFFFF; padding: 24px 32px; }
+  header h1 { margin: 0 0 4px 0; font-size: 22px; }
+  header .meta { color: #C9D6E3; font-size: 13px; }
+  main { max-width: 960px; margin: 24px auto; padding: 0 16px 48px; }
+  section { background: #FFFFFF; border: 1px solid #DDE3E9; border-radius: 6px; padding: 20px 24px; margin-bottom: 20px; }
+  section h2 { margin-top: 0; font-size: 16px; color: #27425D; }
+  .narrative p { line-height: 1.55; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #E5E9ED; font-size: 13px; vertical-align: top; }
+  th { background: #EEF1F4; color: #3A4A5A; }
+  .severity-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; color: #FFFFFF; font-size: 11px; }
+  .gap-list li { margin-bottom: 6px; font-size: 13px; }
+  .mermaid { text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fabrikam Sample AD Architecture Assessment Report v1.0</h1>
+  <div class="meta">Generated 2026-07-23 15:51 UTC</div>
+</header>
+<main>
+  <section class="narrative">
+    <h2>Architecture Narrative</h2>
+    <p>This is a single-domain forest (corp.fabrikam-sample.test) with two sites, HQ-Site and Branch-Site, linked by one site link.</p>
+    <p>There are two external trust relationships: a bidirectional forest trust with partner.fabrikam-sample.test, and an inbound-only external trust from legacy-domain.fabrikam-sample.test.</p>
+    <p>All five FSMO roles are held by a single domain controller, DC01, which is a single point of failure for schema, naming, RID, PDC, and infrastructure operations.</p>
+    <p>DC03 is a read-only domain controller that is not assigned to any site, which will affect client referral behavior for that location.</p>
+  </section>
+
+  <section>
+    <h2>Topology Diagram</h2>
+    <div class="mermaid">
+graph TD
+  subgraph HQ-Site
+    DC01[DC01 - GC, all FSMO]
+    DC02[DC02 - GC]
+  end
+  subgraph Branch-Site
+  end
+  DC03[DC03 - RODC, no site]
+  HQSite[HQ-Site] -- HQ-Branch-Link --> BranchSite[Branch-Site]
+  Corp((corp.fabrikam-sample.test)) == forest trust ==> Partner((partner.fabrikam-sample.test))
+  Legacy((legacy-domain.fabrikam-sample.test)) -. inbound only .-> Corp
+    </div>
+  </section>
+
+  <section>
+    <h2>Anomalies</h2>
+    <table>
+      <thead><tr><th>Severity</th><th>Title</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr><td><span class="severity-pill" style="background:#B3261E">Critical</span></td><td>All FSMO roles on one DC</td><td>DC01 holds all five FSMO roles. Losing DC01 blocks schema changes, RID allocation, and PDC-dependent operations forest-wide until roles are seized.</td></tr>
+        <tr><td><span class="severity-pill" style="background:#8A6D00">Warning</span></td><td>Domain controller with no site assignment</td><td>DC03 has no Site value, which can cause it to be skipped or mis-referred during site-aware client authentication.</td></tr>
+        <tr><td><span class="severity-pill" style="background:#8A6D00">Warning</span></td><td>Inbound-only external trust</td><td>The trust with legacy-domain.fabrikam-sample.test is inbound only and not forest-transitive; confirm this is intentional and not a leftover from a migration.</td></tr>
+        <tr><td><span class="severity-pill" style="background:#3A4A5A">Info</span></td><td>Workstations OU has no GPO ever linked</td><td>OU=Workstations has HasGpoLink = false, meaning no policy is currently enforced at that OU level.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Documentation Gaps</h2>
+    <ul class="gap-list">
+      <li>Trust to partner.fabrikam-sample.test exists but no description or business justification is recorded.</li>
+      <li>Trust to legacy-domain.fabrikam-sample.test exists but no description or business justification is recorded.</li>
+      <li>OU=Legacy under Servers has no description explaining its decommissioning timeline.</li>
+    </ul>
+  </section>
+</main>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
+</body>
+</html>

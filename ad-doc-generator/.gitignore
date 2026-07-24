@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Real export/normalize/analysis/report output should land under
+# C:\Temp\Reports\ADDocGenerator (see README.md), not in this repo.
+# Anything dropped here by mistake during local testing:
+/export/*.json
+/normalize/*.json
+/analyze/*.json
+/render/*.html

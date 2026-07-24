@@ -1,0 +1,81 @@
+{
+  "SchemaVersion": "1.0",
+  "ExportedAt": "2026-07-01T12:00:00.0000000Z",
+  "ExportedBy": "FABRIKAM\\svc-addoc",
+  "SourceDomain": "corp.fabrikam-sample.test",
+  "Sections": {
+    "OrganizationalUnits": {
+      "Area": "OrganizationalUnits",
+      "Status": "Healthy",
+      "Data": [
+        { "DistinguishedName": "OU=Corp,DC=corp,DC=fabrikam-sample,DC=test", "Name": "Corp", "ParentDN": "DC=corp,DC=fabrikam-sample,DC=test", "Description": "Top level OU", "HasGpoLink": true, "Depth": 1 },
+        { "DistinguishedName": "OU=Servers,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test", "Name": "Servers", "ParentDN": "OU=Corp,DC=corp,DC=fabrikam-sample,DC=test", "Description": "", "HasGpoLink": true, "Depth": 2 },
+        { "DistinguishedName": "OU=Workstations,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test", "Name": "Workstations", "ParentDN": "OU=Corp,DC=corp,DC=fabrikam-sample,DC=test", "Description": "", "HasGpoLink": false, "Depth": 2 },
+        { "DistinguishedName": "OU=Legacy,OU=Servers,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test", "Name": "Legacy", "ParentDN": "OU=Servers,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test", "Description": "Decommissioning candidates", "HasGpoLink": false, "Depth": 3 }
+      ]
+    },
+    "Trusts": {
+      "Area": "Trusts",
+      "Status": "Healthy",
+      "Data": [
+        { "Name": "partner.fabrikam-sample.test", "Target": "partner.fabrikam-sample.test", "Source": "corp.fabrikam-sample.test", "Direction": "Bidirectional", "TrustType": "Forest", "ForestTransitive": true, "SIDFilteringQuarantined": false, "DisallowTransivity": false },
+        { "Name": "legacy-domain.fabrikam-sample.test", "Target": "legacy-domain.fabrikam-sample.test", "Source": "corp.fabrikam-sample.test", "Direction": "Inbound", "TrustType": "External", "ForestTransitive": false, "SIDFilteringQuarantined": false, "DisallowTransivity": false }
+      ]
+    },
+    "DomainControllers": {
+      "Area": "DomainControllers",
+      "Status": "Healthy",
+      "Data": [
+        { "HostName": "DC01.corp.fabrikam-sample.test", "Site": "HQ-Site", "Domain": "corp.fabrikam-sample.test", "IsGlobalCatalog": true, "IsReadOnly": false, "OperatingSystem": "Windows Server 2022", "OperationMasterRoles": ["PDCEmulator", "RIDMaster", "InfrastructureMaster", "SchemaMaster", "DomainNamingMaster"], "IPv4Address": "10.10.1.10" },
+        { "HostName": "DC02.corp.fabrikam-sample.test", "Site": "HQ-Site", "Domain": "corp.fabrikam-sample.test", "IsGlobalCatalog": true, "IsReadOnly": false, "OperatingSystem": "Windows Server 2022", "OperationMasterRoles": [], "IPv4Address": "10.10.1.11" },
+        { "HostName": "DC03.corp.fabrikam-sample.test", "Site": "", "Domain": "corp.fabrikam-sample.test", "IsGlobalCatalog": false, "IsReadOnly": true, "OperatingSystem": "Windows Server 2019", "OperationMasterRoles": [], "IPv4Address": "10.20.5.12" }
+      ]
+    },
+    "ReplicationTopology": {
+      "Area": "ReplicationTopology",
+      "Status": "Healthy",
+      "Data": {
+        "Sites": [
+          { "Name": "HQ-Site", "DistinguishedName": "CN=HQ-Site,CN=Sites,CN=Configuration,DC=corp,DC=fabrikam-sample,DC=test", "Description": "Primary datacenter" },
+          { "Name": "Branch-Site", "DistinguishedName": "CN=Branch-Site,CN=Sites,CN=Configuration,DC=corp,DC=fabrikam-sample,DC=test", "Description": "Regional branch office" }
+        ],
+        "SiteLinks": [
+          { "Name": "HQ-Branch-Link", "Cost": 100, "ReplicationFrequencyInMinutes": 180, "SitesIncluded": ["CN=HQ-Site,CN=Sites,CN=Configuration,DC=corp,DC=fabrikam-sample,DC=test", "CN=Branch-Site,CN=Sites,CN=Configuration,DC=corp,DC=fabrikam-sample,DC=test"] }
+        ]
+      }
+    },
+    "GpoLinks": {
+      "Area": "GpoLinks",
+      "Status": "Healthy",
+      "Data": [
+        { "OrganizationalUnit": "OU=Corp,DC=corp,DC=fabrikam-sample,DC=test", "GpoName": "Baseline Security Policy", "Enabled": true, "Enforced": true, "Order": 1 },
+        { "OrganizationalUnit": "OU=Servers,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test", "GpoName": "Server Hardening Policy", "Enabled": true, "Enforced": false, "Order": 1 }
+      ]
+    },
+    "KeyGroupMembership": {
+      "Area": "KeyGroupMembership",
+      "Status": "Healthy",
+      "Data": {
+        "Groups": [
+          {
+            "GroupName": "Domain Admins",
+            "MemberCount": 3,
+            "Members": [
+              { "Name": "Alex Chen", "SamAccountName": "achen", "ObjectClass": "user", "DistinguishedName": "CN=Alex Chen,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test" },
+              { "Name": "Sam Rivera", "SamAccountName": "srivera", "ObjectClass": "user", "DistinguishedName": "CN=Sam Rivera,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test" },
+              { "Name": "svc-backup", "SamAccountName": "svc-backup", "ObjectClass": "user", "DistinguishedName": "CN=svc-backup,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test" }
+            ]
+          },
+          {
+            "GroupName": "Enterprise Admins",
+            "MemberCount": 1,
+            "Members": [
+              { "Name": "Alex Chen", "SamAccountName": "achen", "ObjectClass": "user", "DistinguishedName": "CN=Alex Chen,OU=Corp,DC=corp,DC=fabrikam-sample,DC=test" }
+            ]
+          }
+        ],
+        "Skipped": []
+      }
+    }
+  }
+}

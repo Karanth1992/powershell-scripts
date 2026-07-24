@@ -1,0 +1,15 @@
+{
+  "narrative": "This is a single-domain forest (corp.fabrikam-sample.test) with two sites, HQ-Site and Branch-Site, linked by one site link.\nThere are two external trust relationships: a bidirectional forest trust with partner.fabrikam-sample.test, and an inbound-only external trust from legacy-domain.fabrikam-sample.test.\nAll five FSMO roles are held by a single domain controller, DC01, which is a single point of failure for schema, naming, RID, PDC, and infrastructure operations.\nDC03 is a read-only domain controller that is not assigned to any site, which will affect client referral behavior for that location.",
+  "anomalies": [
+    { "severity": "Critical", "title": "All FSMO roles on one DC", "detail": "DC01 holds all five FSMO roles. Losing DC01 blocks schema changes, RID allocation, and PDC-dependent operations forest-wide until roles are seized." },
+    { "severity": "Warning", "title": "Domain controller with no site assignment", "detail": "DC03 has no Site value, which can cause it to be skipped or mis-referred during site-aware client authentication." },
+    { "severity": "Warning", "title": "Inbound-only external trust", "detail": "The trust with legacy-domain.fabrikam-sample.test is inbound only and not forest-transitive; confirm this is intentional and not a leftover from a migration." },
+    { "severity": "Info", "title": "Workstations OU has no GPO ever linked", "detail": "OU=Workstations has HasGpoLink = false, meaning no policy is currently enforced at that OU level." }
+  ],
+  "documentationGaps": [
+    "Trust to partner.fabrikam-sample.test exists but no description or business justification is recorded.",
+    "Trust to legacy-domain.fabrikam-sample.test exists but no description or business justification is recorded.",
+    "OU=Legacy under Servers has no description explaining its decommissioning timeline."
+  ],
+  "mermaidDiagram": "graph TD\n  subgraph HQ-Site\n    DC01[DC01 - GC, all FSMO]\n    DC02[DC02 - GC]\n  end\n  subgraph Branch-Site\n  end\n  DC03[DC03 - RODC, no site]\n  HQSite[HQ-Site] -- HQ-Branch-Link --> BranchSite[Branch-Site]\n  Corp((corp.fabrikam-sample.test)) == forest trust ==> Partner((partner.fabrikam-sample.test))\n  Legacy((legacy-domain.fabrikam-sample.test)) -. inbound only .-> Corp"
+}
