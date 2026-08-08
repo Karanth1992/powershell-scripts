@@ -105,14 +105,18 @@ function Get-EntraConnectSyncStatus {
             if (Test-Path -LiteralPath $miiserverPath) {
                 $version = (Get-Item -LiteralPath $miiserverPath).VersionInfo.ProductVersion
             }
-        } catch { <# leave $version as 'Unknown' #> }
+        } catch {
+            Write-Verbose "Could not read miiserver.exe version; leaving Version as 'Unknown'. $($_.Exception.Message)"
+        }
 
         # Scheduler has no "last successful sync" property - the closest real
         # signal is the most recent run's own result/timestamp from run history.
         $lastRunResult = $null
         try {
             $lastRunResult = Get-ADSyncRunProfileResult -NumberRequested 1 -ErrorAction Stop | Select-Object -First 1
-        } catch { <# run history unavailable - leave $lastRunResult as $null #> }
+        } catch {
+            Write-Verbose "Run history unavailable; leaving LastRunResult as `$null. $($_.Exception.Message)"
+        }
 
         # -- Connector summary --
         # Microsoft.IdentityManagement.PowerShell.ObjectModel.ConnectorStatistics
@@ -144,7 +148,9 @@ function Get-EntraConnectSyncStatus {
             $pwdSync = Get-ADSyncAADPasswordSyncConfiguration -SourceConnector (
                 $connectors | Where-Object Type -eq 'AD' | Select-Object -First 1 -ExpandProperty ConnectorName
             )
-        } catch { <# Password sync not configured - skip #> }
+        } catch {
+            Write-Verbose "Password sync not configured for this source connector; skipping. $($_.Exception.Message)"
+        }
 
         [PSCustomObject]@{
             Version              = $version

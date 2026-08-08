@@ -57,10 +57,13 @@ function Get-AccountLockoutReport {
     # ============ FUNCTIONS ============
 
     function Remove-ExistingFile {
+        [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
         param([string[]]$Files)
         foreach ($f in $Files) {
             if (Test-Path -LiteralPath $f) {
-                Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue
+                if ($PSCmdlet.ShouldProcess($f, 'Remove existing file')) {
+                    Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue
+                }
             }
         }
     }
