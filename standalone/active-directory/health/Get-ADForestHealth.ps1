@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Generates an HTML health report for all domain controllers
     across an Active Directory forest.
@@ -41,21 +41,22 @@
 # ============ CONFIGURATION ============
 
 $now              = Get-Date
-$date             = $now.ToShortDateString()
 $reportTime       = $now
 $allDomains       = (Get-ADForest).Domains
-$reportEmailSubject = "Active Directory Health Check for $($allDomains -join ', ')"
 
 # ============ EMAIL CONFIGURATION ============
-# Update these values before enabling email reporting
+# Uncomment along with the Send-MailMessage block at the bottom to enable
+# email reporting. Update these values before enabling.
 
-$smtpSettings = @{
-    To         = 'recipient@example.com'
-    From       = 'sender@example.com'
-    Subject    = "$reportEmailSubject - $date"
-    SmtpServer = 'smtp.example.com'
-    Port       = 25
-}
+# $date               = $now.ToShortDateString()
+# $reportEmailSubject = "Active Directory Health Check for $($allDomains -join ', ')"
+# $smtpSettings = @{
+#     To         = 'recipient@example.com'
+#     From       = 'sender@example.com'
+#     Subject    = "$reportEmailSubject - $date"
+#     SmtpServer = 'smtp.example.com'
+#     Port       = 25
+# }
 
 # ============ OUTPUT CONFIGURATION ============
 

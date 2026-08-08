@@ -102,7 +102,7 @@
                 ErrorAction     = "Stop"
             }
             if ($Credential) { $splatArgs.Credential = $Credential }
-            Get-WinEvent @splatArgs
+            @(Get-WinEvent @splatArgs)
         }
         catch [System.Exception] {
             if ($_.Exception.Message -match "No events were found") {
@@ -262,8 +262,8 @@
 
     # 4606/4624 = Logon; 4768 = Kerberos TGT; 4769 = Kerberos TGS; 4776 = NTLM
     $logonEventIds = @(4624, 4625, 4648, 4768, 4769, 4776)
-    $logonEvents   = Get-EventsRemotely -ComputerName $DCName -LogName "Security" `
-                        -EventIds $logonEventIds -After $Since -MaxResults 1000
+    $logonEvents   = @(Get-EventsRemotely -ComputerName $DCName -LogName "Security" `
+                        -EventIds $logonEventIds -After $Since -MaxResults 1000)
 
     $logonSummary = $logonEvents | Group-Object Id | Sort-Object Count -Descending |
         Select-Object @{N="EventId";E={$_.Name}},
@@ -391,7 +391,7 @@
         $siteLinks | ForEach-Object {
             Write-Host "    $($_.Name) — Sites: $($_.SitesIncluded -join ', ')" -ForegroundColor Gray
         }
-        $Results["SiteLinks"] = $siteLinks | Select-Object Name, Cost, ReplicationFrequencyInMinutes, SitesIncluded
+        $Results["SiteLinks"] = @($siteLinks | Select-Object Name, Cost, ReplicationFrequencyInMinutes, SitesIncluded)
     }
     catch {
         Write-Check "Site/Subnet Query" "FAIL" $_.Exception.Message

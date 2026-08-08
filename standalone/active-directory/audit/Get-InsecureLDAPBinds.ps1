@@ -103,10 +103,10 @@ foreach ($DC in $DomainControllers) {
         continue
     }
 
-    foreach ($Event in $FilteredEvents) {
-        $Client      = $Event.InsertionStrings[0]
-        $User        = $Event.InsertionStrings[1]
-        $BindTypeRaw = $Event.InsertionStrings[2]
+    foreach ($LdapEvent in $FilteredEvents) {
+        $Client      = $LdapEvent.InsertionStrings[0]
+        $User        = $LdapEvent.InsertionStrings[1]
+        $BindTypeRaw = $LdapEvent.InsertionStrings[2]
 
         $IPAddress = $null
         $Port      = $null

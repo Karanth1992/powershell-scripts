@@ -290,6 +290,9 @@
 #requires -Version 5.1
 
 [CmdletBinding(SupportsShouldProcess)]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    'PSReviewUnusedParameter', '',
+    Justification = 'Script-level param() block; PSScriptAnalyzer cannot trace usage this far down a single large script — all parameters are referenced later in the body.')]
 param(
     [Alias('VER')]
     [switch]$VersionInfo,

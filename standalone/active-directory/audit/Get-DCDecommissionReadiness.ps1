@@ -1,4 +1,4 @@
-#Requires -Modules ActiveDirectory
+﻿#Requires -Modules ActiveDirectory
 <#
 .SYNOPSIS
     Pre-decommission readiness scan for a Domain Controller.
@@ -99,7 +99,7 @@ function Get-EventsRemotely {
             ErrorAction     = "Stop"
         }
         if ($Credential) { $splatArgs.Credential = $Credential }
-        Get-WinEvent @splatArgs
+        @(Get-WinEvent @splatArgs)
     }
     catch [System.Exception] {
         if ($_.Exception.Message -match "No events were found") {
@@ -228,14 +228,14 @@ try {
     $queueCount = ($replQueue | Measure-Object).Count
     $qStatus = if ($queueCount -gt 0) { "WARN" } else { "OK" }
     Write-Check "Replication Queue" $qStatus "$queueCount pending operations"
-    $Results["ReplicationQueue"] = $replQueue
+    $Results["ReplicationQueue"] = @($replQueue)
 
     # Replication failures
     $replFail = Get-ADReplicationFailure -Target $DCName -ErrorAction Stop
     $failCount = ($replFail | Measure-Object).Count
     $fStatus = if ($failCount -gt 0) { "FAIL" } else { "OK" }
     Write-Check "Replication Failures" $fStatus "$failCount active failures"
-    $Results["ReplicationFailures"] = $replFail
+    $Results["ReplicationFailures"] = @($replFail)
 }
 catch {
     Write-Check "Replication Query" "FAIL" $_.Exception.Message
@@ -249,8 +249,8 @@ Write-Section "4. Logon Activity (Last $DaysBack Days)"
 
 # 4606/4624 = Logon; 4768 = Kerberos TGT; 4769 = Kerberos TGS; 4776 = NTLM
 $logonEventIds = @(4624, 4625, 4648, 4768, 4769, 4776)
-$logonEvents   = Get-EventsRemotely -ComputerName $DCName -LogName "Security" `
-                    -EventIds $logonEventIds -After $Since -MaxResults 1000
+$logonEvents   = @(Get-EventsRemotely -ComputerName $DCName -LogName "Security" `
+                    -EventIds $logonEventIds -After $Since -MaxResults 1000)
 
 $logonSummary = $logonEvents | Group-Object Id | Sort-Object Count -Descending |
     Select-Object @{N="EventId";E={$_.Name}},
@@ -322,8 +322,8 @@ catch {
 Write-Section "6. SYSVOL / DFSR Health"
 
 $dfsrEventIds = @(2213, 4012, 5008, 1202, 6016, 6018)
-$dfsrEvents   = Get-EventsRemotely -ComputerName $DCName -LogName "DFS Replication" `
-                    -EventIds $dfsrEventIds -After $Since -MaxResults 100
+$dfsrEvents   = @(Get-EventsRemotely -ComputerName $DCName -LogName "DFS Replication" `
+                    -EventIds $dfsrEventIds -After $Since -MaxResults 100)
 
 if ($dfsrEvents.Count -gt 0) {
     Write-Check "DFSR Critical Events" "WARN" "$($dfsrEvents.Count) events found in last $DaysBack days"
@@ -334,7 +334,7 @@ if ($dfsrEvents.Count -gt 0) {
 else {
     Write-Check "DFSR Critical Events" "OK" "No critical DFSR events in last $DaysBack days"
 }
-$Results["DFSREvents"] = $dfsrEvents | Select-Object TimeCreated, Id, Message
+$Results["DFSREvents"] = @($dfsrEvents | Select-Object TimeCreated, Id, Message)
 
 # SYSVOL share availability
 $sysvol = Get-SmbShare -CimSession $DCName -Name SYSVOL -ErrorAction SilentlyContinue
@@ -367,7 +367,7 @@ try {
     $subnets | ForEach-Object {
         Write-Host "    $($_.Name) → $($_.Site)" -ForegroundColor Gray
     }
-    $Results["Subnets"] = $subnets | Select-Object Name, Location, Site
+    $Results["Subnets"] = @($subnets | Select-Object Name, Location, Site)
 
     # Site links referencing this site
     $siteLinks = Get-ADReplicationSiteLink -Filter * |
@@ -377,7 +377,7 @@ try {
     $siteLinks | ForEach-Object {
         Write-Host "    $($_.Name) — Sites: $($_.SitesIncluded -join ', ')" -ForegroundColor Gray
     }
-    $Results["SiteLinks"] = $siteLinks | Select-Object Name, Cost, ReplicationFrequencyInMinutes, SitesIncluded
+    $Results["SiteLinks"] = @($siteLinks | Select-Object Name, Cost, ReplicationFrequencyInMinutes, SitesIncluded)
 }
 catch {
     Write-Check "Site/Subnet Query" "FAIL" $_.Exception.Message
@@ -390,8 +390,8 @@ catch {
 Write-Section "8. Netlogon & Secure Channel Activity"
 
 $netlogonEventIds = @(5722, 5805, 5723, 3210, 5806)
-$netlogonEvents   = Get-EventsRemotely -ComputerName $DCName -LogName "System" `
-                        -EventIds $netlogonEventIds -After $Since -MaxResults 200
+$netlogonEvents   = @(Get-EventsRemotely -ComputerName $DCName -LogName "System" `
+                        -EventIds $netlogonEventIds -After $Since -MaxResults 200)
 
 if ($netlogonEvents.Count -gt 0) {
     Write-Check "Secure Channel Issues (5722/5805)" "WARN" "$($netlogonEvents.Count) events found"
@@ -427,8 +427,8 @@ catch {
 Write-Section "9. Directory Service Event Log"
 
 $dsErrorIds = @(1311, 1566, 2088, 1084, 1925, 2042)
-$dsEvents   = Get-EventsRemotely -ComputerName $DCName -LogName "Directory Service" `
-                  -EventIds $dsErrorIds -After $Since -MaxResults 200
+$dsEvents   = @(Get-EventsRemotely -ComputerName $DCName -LogName "Directory Service" `
+                  -EventIds $dsErrorIds -After $Since -MaxResults 200)
 
 if ($dsEvents.Count -gt 0) {
     Write-Check "Directory Service Errors/Warnings" "WARN" "$($dsEvents.Count) events found"
@@ -439,7 +439,7 @@ if ($dsEvents.Count -gt 0) {
 else {
     Write-Check "Directory Service Errors" "OK" "No critical DS events in last $DaysBack days"
 }
-$Results["DirectoryServiceEvents"] = $dsEvents | Select-Object TimeCreated, Id, Message
+$Results["DirectoryServiceEvents"] = @($dsEvents | Select-Object TimeCreated, Id, Message)
 
 #endregion
 

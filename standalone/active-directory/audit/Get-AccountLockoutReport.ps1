@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reports currently locked Active Directory accounts and the
     computers that caused the lockouts.
@@ -90,11 +90,12 @@ function Send-ReportEmail {
 }
 
 # ============ EMAIL CONFIGURATION ============
-# Update these before enabling email reporting
+# Uncomment along with the EMAIL SUMMARY block near the bottom to enable
+# email reporting. Update these values before enabling.
 
-$emailFrom = 'ad.monitoring@example.com'
-$emailTo   = 'domainadmins@example.com'
-$emailSmtp = 'smtp.example.com'
+# $emailFrom = 'ad.monitoring@example.com'
+# $emailTo   = 'domainadmins@example.com'
+# $emailSmtp = 'smtp.example.com'
 
 # ============ FILE PATHS ============
 

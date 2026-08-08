@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Tests critical port availability across all Active Directory
     domain controllers and outputs a colour-coded summary report.
@@ -108,8 +108,9 @@ $results = [System.Collections.Generic.List[PSCustomObject]]::new()
 foreach ($dc in $domainControllers) {
     Write-Host "`nChecking $($dc.HostName) [$($dc.Site)]..." -ForegroundColor Cyan
 
-    foreach ($port in $portsToCheck.Keys) {
-        $serviceName = $portsToCheck[$port]
+    foreach ($portEntry in $portsToCheck.GetEnumerator()) {
+        $port        = $portEntry.Key
+        $serviceName = $portEntry.Value
         $isOpen      = Test-PortWithTimeout -ComputerName $dc.HostName -Port $port -TimeoutSeconds $TimeoutSeconds
         $status      = if ($isOpen) { 'Open' } else { 'Closed' }
         $color        = if ($isOpen) { 'Green' } else { 'Red' }

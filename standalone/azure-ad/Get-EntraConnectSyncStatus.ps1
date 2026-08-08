@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reports the health and sync status of an Entra Connect (Azure AD Connect) server.
 

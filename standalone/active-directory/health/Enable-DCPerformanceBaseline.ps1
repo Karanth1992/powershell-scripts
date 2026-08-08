@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Deploys a performance baseline Data Collector Set across all domain controllers.
 

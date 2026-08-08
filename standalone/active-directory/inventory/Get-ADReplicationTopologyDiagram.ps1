@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Discovers all domain controllers in the forest, collects their replication
     partnerships, and produces a self-contained HTML diagram of the topology.
@@ -407,7 +407,7 @@ $dcH    = 68    # slightly taller to fit site label inside the box
 $margin = 60
 
 # --- SVG helpers ---
-function Esc-Xml { param([string]$s) $s -replace '&','&amp;' -replace '<','&lt;' -replace '>','&gt;' -replace '"','&quot;' }
+function ConvertTo-XmlEscapedText { param([string]$s) $s -replace '&','&amp;' -replace '<','&lt;' -replace '>','&gt;' -replace '"','&quot;' }
 
 # -----------------------------------------------------------------------
 # Identify the PDC emulator - it goes in the centre of the diagram.
@@ -595,7 +595,7 @@ foreach ($hn in $dcPos.Keys) {
     }
 
     # Site name banner at top of box
-    $siteEsc = Esc-Xml $dc.Site
+    $siteEsc = ConvertTo-XmlEscapedText $dc.Site
     $null = $svg.AppendLine("<text x='$($x1 + $dcW/2)' y='$($y1 + 13)' text-anchor='middle' font-size='9' fill='$($siteCol.Stroke)' letter-spacing='0.5'>$siteEsc</text>")
 
     # Thin separator line under site label
@@ -603,11 +603,11 @@ foreach ($hn in $dcPos.Keys) {
 
     # Hostname
     $nameCol  = if ($isPdc) { '#fde68a' } else { '#e2e8f0' }
-    $nameEsc  = Esc-Xml $dc.Name
+    $nameEsc  = ConvertTo-XmlEscapedText $dc.Name
     $null = $svg.AppendLine("<text x='$($x1 + $dcW/2)' y='$($y1 + 31)' text-anchor='middle' font-size='12' font-weight='700' fill='$nameCol'>$nameEsc</text>")
 
     # IPv4
-    $ipEsc = Esc-Xml $dc.IPv4
+    $ipEsc = ConvertTo-XmlEscapedText $dc.IPv4
     $null = $svg.AppendLine("<text x='$($x1 + $dcW/2)' y='$($y1 + 45)' text-anchor='middle' font-size='10' fill='#94a3b8'>$ipEsc</text>")
 
     # Role / badge line
@@ -622,7 +622,7 @@ foreach ($hn in $dcPos.Keys) {
 
     if ($badges) {
         $badgeColor = if ($hasFail) { '#f87171' } elseif ($isPdc) { '#fbbf24' } else { '#38bdf8' }
-        $badgeEsc   = Esc-Xml ($badges -join '  ')
+        $badgeEsc   = ConvertTo-XmlEscapedText ($badges -join '  ')
         $null = $svg.AppendLine("<text x='$($x1 + $dcW/2)' y='$($y1 + 60)' text-anchor='middle' font-size='9' fill='$badgeColor' font-weight='600'>$badgeEsc</text>")
     }
 }
@@ -634,7 +634,7 @@ $null = $svg.AppendLine("<text x='$margin' y='$($legendY + 4)' font-size='11' fo
 $pillX = $margin + 40 ; $pillY = $legendY - 6
 foreach ($site in ($siteColorMap.Keys | Sort-Object)) {
     $col  = $siteColorMap[$site]
-    $sEsc = Esc-Xml $site
+    $sEsc = ConvertTo-XmlEscapedText $site
     $tw   = $sEsc.Length * 7 + 24   # approximate pill width
     $null = $svg.AppendLine("<rect x='$pillX' y='$pillY' width='$tw' height='18' rx='9' fill='$($col.Fill)' stroke='$($col.Stroke)' stroke-width='1.2'/>")
     $null = $svg.AppendLine("<text x='$($pillX + $tw/2)' y='$($pillY + 12)' text-anchor='middle' font-size='10' fill='$($col.Stroke)'>$sEsc</text>")
