@@ -1,3 +1,77 @@
+<#
+.SYNOPSIS
+    Finds and optionally disables stale (inactive) Active Directory
+    computer accounts.
+
+.DESCRIPTION
+    Uses Search-ADAccount to find computer objects that have been
+    inactive for longer than the given threshold, then classifies
+    each candidate before touching anything:
+    - Domain controllers (PrimaryGroupID 516/521) are always skipped
+    - Cluster name objects (SPN matches a cluster service) are
+      always skipped
+    - Accounts already disabled are skipped
+    - Accounts whose PasswordLastSet is more recent than the
+      inactivity threshold are flagged for manual Review rather
+      than acted on
+    - Everything else is reported as a Candidate
+
+    By default the script is read-only and only reports candidates.
+    Pass -Disable to actually disable qualifying accounts; disabling
+    is gated by SupportsShouldProcess, so -WhatIf/-Confirm apply.
+
+    Data source: ActiveDirectory module (Search-ADAccount,
+    Get-ADComputer, Disable-ADAccount).
+    WinRM: not used - all work is done locally against the
+    ActiveDirectory module's own LDAP connection.
+
+    Output: a timestamped CSV report is always written to ReportPath,
+    listing every candidate found and the action taken (or not taken)
+    for each. Default: C:\Temp\Reports\StaleComputerAccounts.
+
+.PARAMETER InactiveDays
+    Number of days of inactivity before a computer account is
+    considered stale. Default is 90.
+
+.PARAMETER SearchBase
+    Optional distinguished name to limit the search to a specific OU
+    or subtree. If omitted, the whole domain is searched.
+
+.PARAMETER ReportPath
+    Folder where the CSV report is written. Defaults to
+    C:\Temp\Reports\StaleComputerAccounts. Created automatically if
+    it does not exist.
+
+.PARAMETER Disable
+    Switch to actually disable qualifying stale accounts. Without
+    this switch the script only reports candidates and makes no
+    changes.
+
+.EXAMPLE
+    .\Disable-StaleADComputer.ps1
+    Reports stale computer accounts (90+ days inactive) without
+    disabling anything.
+
+.EXAMPLE
+    .\Disable-StaleADComputer.ps1 -InactiveDays 180 -Disable -WhatIf
+    Previews which accounts inactive for 180+ days would be disabled,
+    without making changes.
+
+.EXAMPLE
+    .\Disable-StaleADComputer.ps1 -SearchBase "OU=Workstations,DC=corp,DC=example,DC=com" -Disable
+    Disables qualifying stale accounts under the given OU only.
+
+.NOTES
+    Author:   K Shankar R Karanth
+    Website:  https://karanth.ovh
+    Version:  1.0
+    Requires: ActiveDirectory module, permission to disable computer
+              objects in scope
+    Read-only/Mutating: Read-only by default; mutating (disables
+              accounts) only when -Disable is supplied. Supports
+              -WhatIf and -Confirm via SupportsShouldProcess.
+#>
+
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory = $false)]
@@ -32,10 +106,13 @@ $searchParams = @{
 }
 if ($SearchBase) { $searchParams['SearchBase'] = $SearchBase }
 
+Write-Verbose "Searching for computer accounts inactive $InactiveDays+ days$(if ($SearchBase) { " under $SearchBase" })"
 $candidates = Search-ADAccount @searchParams
+Write-Verbose "Found $($candidates.Count) candidate(s)"
 $results = [System.Collections.Generic.List[pscustomobject]]::new()
 
 foreach ($candidate in $candidates) {
+    Write-Verbose "Evaluating $($candidate.DistinguishedName)"
 
     # Step 2: pull the extra properties Search-ADAccount does not return,
     # so every row can be reviewed before anything is disabled
@@ -109,6 +186,7 @@ foreach ($candidate in $candidates) {
 # Always export a CSV of what was found and what happened to it, before anything else
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $csvPath = Join-Path -Path $ReportPath -ChildPath "StaleComputerAccounts_$timestamp.csv"
+Write-Verbose "Writing report to $csvPath"
 $results | Export-Csv -LiteralPath $csvPath -NoTypeInformation
 
 $results | Format-Table -AutoSize
