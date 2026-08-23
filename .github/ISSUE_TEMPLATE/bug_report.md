@@ -1,18 +1,18 @@
 ---
 name: Bug report
-about: Report unexpected behavior in an ADOpsKit function or standalone script
+about: Report unexpected behavior in a standalone script. For the ADOpsKit module, use https://github.com/Karanth1992/ADOpsKit/issues instead.
 title: "[Bug] "
 labels: bug
 assignees: ''
 ---
 
-## Function / script
+## Script
 
-Which function or script? (e.g. `Get-ADForestHealth`, `standalone/active-directory/health/Test-DCPortHealth.ps1`)
+Which script? (e.g. `standalone/active-directory/health/Test-DCPortHealth.ps1`)
 
-## Module version
+## Script version
 
-Output of `(Get-Module ADOpsKit -ListAvailable).Version` or the script version from `.NOTES`.
+Version from the script's `.NOTES` help section.
 
 ## Environment
 

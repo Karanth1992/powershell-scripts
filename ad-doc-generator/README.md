@@ -4,8 +4,8 @@ Turns a snapshot of Active Directory structure into a written architecture
 narrative, an anomaly list, and a Mermaid topology diagram — automatically,
 from data that changes over time.
 
-Sits next to [ADOpsKit](../ADOpsKit) in this repo: ADOpsKit handles
-operations and health checks; this handles documentation and drift
+Complements [ADOpsKit](https://github.com/Karanth1992/ADOpsKit): ADOpsKit
+handles operations and health checks; this handles documentation and drift
 visibility.
 
 ## Pipeline

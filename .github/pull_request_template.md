@@ -4,12 +4,9 @@
 
 ## Checklist
 
-- [ ] `Invoke-ScriptAnalyzer -Path ./ADOpsKit -Recurse -Severity Warning,Error -Settings .pssa.psd1` is clean
-- [ ] Pester tests added/updated for any new or changed public function, and pass with `-ExcludeTag Integration`
+- [ ] `Invoke-ScriptAnalyzer -Path ./standalone -Recurse -Severity Warning,Error -Settings .pssa.psd1` is clean
 - [ ] Comment-based help updated (`.SYNOPSIS`, `.PARAMETER`, `.EXAMPLE`, `.NOTES`) if parameters or behavior changed
-- [ ] `CHANGELOG.md` entry added under `## ADOpsKit Module` if this is user-visible
 - [ ] No internal server names, domains, share paths, usernames, or credentials in code or examples
-- [ ] `ModuleVersion` in `ADOpsKit.psd1` left untouched (bumped separately at release time — see [WORKFLOW.md](../WORKFLOW.md))
 
 ## Testing performed
 

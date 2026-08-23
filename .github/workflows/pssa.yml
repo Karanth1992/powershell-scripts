@@ -17,33 +17,9 @@ jobs:
         shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
-          $results = Invoke-ScriptAnalyzer -Path ./ADOpsKit,./standalone -Recurse -Severity Warning,Error -Settings .pssa.psd1
+          $results = Invoke-ScriptAnalyzer -Path ./standalone -Recurse -Severity Warning,Error -Settings .pssa.psd1
           if ($results) {
             $results | Format-Table -AutoSize
             exit 1
           }
           Write-Host "No PSScriptAnalyzer warnings or errors found." -ForegroundColor Green
-
-  unit-tests:
-    name: Pester Unit Tests
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run Pester unit tests
-        shell: pwsh
-        run: |
-          Install-Module Pester -Force -SkipPublisherCheck -Scope CurrentUser
-          Import-Module Pester -MinimumVersion 5.0
-          $config = New-PesterConfiguration
-          $config.Run.Path              = './ADOpsKit/Tests'
-          $config.Filter.ExcludeTag     = 'Integration'
-          $config.Output.Verbosity      = 'Detailed'
-          $config.TestResult.Enabled    = $true
-          $config.TestResult.OutputPath = 'TestResults.xml'
-          $result = Invoke-Pester -Configuration $config
-          if ($result.FailedCount -gt 0) {
-            Write-Host "$($result.FailedCount) test(s) failed." -ForegroundColor Red
-            exit 1
-          }
-          Write-Host "All $($result.PassedCount) tests passed." -ForegroundColor Green
